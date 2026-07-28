@@ -1,0 +1,67 @@
+DİYET TAKİP — TELEFONA YÜKLEME (ADIM ADIM, ÜCRETSİZ)
+====================================================
+
+Bu pakette Flutter ile yazılmış hazır bir mobil uygulama var.
+Bilgisayarına HİÇBİR ŞEY kurmayacaksın — APK'yı internette (GitHub) ücretsiz ürettireceğiz.
+
+GEREKENLER: sadece bir Gmail hesabı (GitHub hesabı onunla açılır).
+
+----------------------------------------------------
+ADIM 1 — GitHub hesabı aç (2 dakika)
+----------------------------------------------------
+1) https://github.com adresine gir
+2) "Sign up" de → Gmail adresin, şifre, kullanıcı adı ile hesap aç
+3) E-postana gelen kodu gir, hesabı doğrula
+
+----------------------------------------------------
+ADIM 2 — Proje deposu (repository) aç
+----------------------------------------------------
+1) Giriş yaptıktan sonra sağ üstteki "+" → "New repository"
+2) Repository name: diyet-app  yaz
+3) Public seçili kalsın
+4) "Create repository" butonuna bas
+
+----------------------------------------------------
+ADIM 3 — Dosyaları yükle
+----------------------------------------------------
+1) Açılan sayfada "uploading an existing file" linkine tıkla
+   (görünmezse: Add file → Upload files)
+2) Bu paketteki diyet_app klasörünün İÇİNDEKİ her şeyi
+   (lib klasörü, .github klasörü, pubspec.yaml) sürükle-bırak ile yükle.
+   ÖNEMLİ: .github klasörü de yüklenmeli — APK üreten sihir onun içinde!
+3) Sayfanın altındaki yeşil "Commit changes" butonuna bas
+
+----------------------------------------------------
+ADIM 4 — APK'nın üretilmesini bekle (5-10 dakika)
+----------------------------------------------------
+1) Deponun üst menüsünden "Actions" sekmesine gir
+2) "APK Uret" adında sarı dönen bir iş göreceksin — bu APK üretiyor
+3) Yeşil tik olunca iş bitmiş demektir (kırmızı X olursa bana yaz, bakarım)
+
+----------------------------------------------------
+ADIM 5 — APK'yı indir
+----------------------------------------------------
+1) Actions sekmesinde biten işe tıkla
+2) Sayfanın altında "Artifacts" bölümünde "DiyetTakip-APK" var → tıkla, iner
+3) İnen ZIP'in içinde app-release.apk var → onu çıkar
+
+----------------------------------------------------
+ADIM 6 — Telefona kur
+----------------------------------------------------
+1) APK dosyasını telefonuna gönder:
+   - Kendine e-posta at, ya da
+   - USB kabloyla kopyala, ya da
+   - WhatsApp'tan kendine/ yakınına gönder
+2) Telefonda dosyaya tıkla → "Bilinmeyen kaynaklardan kuruluma izin ver"
+   diye sorarsa İZİN VER (kendi uygulaman, güvenli)
+3) Kur → aç → önce Profil sekmesinden bilgilerini gir!
+
+----------------------------------------------------
+SONRAKİ ADIMLAR (uygulamayı beğenince)
+----------------------------------------------------
+- AdMob hesabı açıp reklam kodlarını ekleriz (banner + geçiş reklamı)
+- Google Play geliştirici hesabı (25$ tek seferlik)
+- Uygulamayı mağazaya yükleriz → indiren herkes reklamları görür → kazanç başlar
+- Apple için sonra bakarız
+
+Sorun yaşarsan hangi adımda takıldığını yaz, birlikte çözeriz.
