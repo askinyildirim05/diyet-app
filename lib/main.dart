@@ -254,7 +254,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomeState extends State<HomePage> {
-  Map<String, dynamic> state = {"profile": null, "days": {}};
+  Map<String, dynamic> state = {"profile": null, "days": <String, dynamic>{}};
   int tabIndex = 0;
   DateTime currentDay = DateTime.now();
   bool loaded = false;
@@ -350,7 +350,7 @@ class _HomeState extends State<HomePage> {
         final data = jsonDecode(raw);
         if (data is Map<String, dynamic>) {
           state = data;
-          state.putIfAbsent("days", () => {});
+          state.putIfAbsent("days", () => <String, dynamic>{});
         }
       } catch (_) {}
     }
@@ -371,7 +371,8 @@ class _HomeState extends State<HomePage> {
 
   Map<String, dynamic> dayData(DateTime d) {
     final k = _key(d);
-    final days = state["days"] as Map<String, dynamic>;
+    final days = Map<String, dynamic>.from(state["days"] as Map);
+    state["days"] = days;
     if (!days.containsKey(k)) {
       days[k] = {
         "meals": {for (var m in kMeals) m: []},
@@ -379,7 +380,8 @@ class _HomeState extends State<HomePage> {
         "weight": null,
       };
     }
-    final dd = days[k] as Map<String, dynamic>;
+    final dd = Map<String, dynamic>.from(days[k] as Map);
+    days[k] = dd;
     dd.putIfAbsent("water", () => 0);
     dd["meals"] ??= {for (var m in kMeals) m: []};
     for (var m in kMeals) {
@@ -804,7 +806,7 @@ class _HomeState extends State<HomePage> {
   // ================= KİLO =================
   List<MapEntry<String, double>> _weightEntries() {
     final out = <MapEntry<String, double>>[];
-    (state["days"] as Map<String, dynamic>).forEach((k, v) {
+    Map<String, dynamic>.from(state["days"] as Map).forEach((k, v) {
       final w = (v as Map)["weight"];
       if (w != null) out.add(MapEntry(k, (w as num).toDouble()));
     });
