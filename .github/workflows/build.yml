@@ -12,11 +12,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.35.2'
           channel: stable
           cache: true
       - name: Android platform dosyalarini uret
         run: flutter create --platforms android --org com.diyettakip .
-      - name: Gradle 8e sabitle (reklam paketi Gradle 9 desteklemiyor)
+      - name: Gradle 8e sabitle ve minSdk ayarla
         run: |
           sed -i 's|distributionUrl=.*|distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.3-all.zip|' android/gradle/wrapper/gradle-wrapper.properties
           sed -i 's|flutter.minSdkVersion|23|' android/app/build.gradle.kts 2>/dev/null || true
