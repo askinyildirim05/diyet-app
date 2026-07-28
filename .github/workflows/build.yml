@@ -26,9 +26,10 @@ jobs:
         run: |
           sed -i 's|apk/res/android">|apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>|' android/app/src/main/AndroidManifest.xml
           sed -i 's|</application>|    <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-5113050441647801~5970291753"/>\n    </application>|' android/app/src/main/AndroidManifest.xml
+          cat android/app/src/main/AndroidManifest.xml
       - run: flutter pub get
-      - run: flutter build apk --release
+      - run: flutter build apk --debug
       - uses: actions/upload-artifact@v4
         with:
-          name: DiyetTakip-APK
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: DiyetTakip-APK-DEBUG
+          path: build/app/outputs/flutter-apk/app-debug.apk
