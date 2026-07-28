@@ -16,11 +16,15 @@ jobs:
           cache: true
       - name: Android platform dosyalarini uret
         run: flutter create --platforms android --org com.diyettakip .
+      - name: Gradle 8e sabitle (reklam paketi Gradle 9 desteklemiyor)
+        run: |
+          sed -i 's|distributionUrl=.*|distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.3-all.zip|' android/gradle/wrapper/gradle-wrapper.properties
+          sed -i 's|flutter.minSdkVersion|23|' android/app/build.gradle.kts 2>/dev/null || true
+          sed -i 's|flutter.minSdkVersion|23|' android/app/build.gradle 2>/dev/null || true
       - name: AdMob ve internet iznini manifeste gom
         run: |
           sed -i 's|apk/res/android">|apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>|' android/app/src/main/AndroidManifest.xml
           sed -i 's|</application>|    <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-5113050441647801~5970291753"/>\n    </application>|' android/app/src/main/AndroidManifest.xml
-          cat android/app/src/main/AndroidManifest.xml
       - run: flutter pub get
       - run: flutter build apk --release
       - uses: actions/upload-artifact@v4
