@@ -202,7 +202,7 @@ const kAylar = [
 ];
 
 String fmtDate(DateTime d) =>
-    "${d.day} ${kAylar[d.month]} ${d.year}, ${kGunler[d.weekday() - 1]}";
+    "${d.day} ${kAylar[d.month]} ${d.year}, ${kGunler[d.weekday - 1]}";
 
 int foodKcal(String ad) =>
     kFoods.firstWhere((f) => f[0] == ad)[2] as int;
@@ -226,7 +226,7 @@ class DiyetApp extends StatelessWidget {
           backgroundColor: kBg, foregroundColor: kInk, elevation: 0,
           titleTextStyle: TextStyle(color: kInk, fontSize: 20, fontWeight: FontWeight.bold),
         ),
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData(
           color: kCard, elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
@@ -1079,12 +1079,12 @@ class _HomeState extends State<HomePage> {
     if (p["target_weight"] != null) cTargetW.text = "${p["target_weight"]}";
     pGender = p["gender"] == "E" ? "Erkek" : "Kadın";
     for (int i = 0; i < kActivities.length; i++) {
-      if ((kActivities[i][1] as double - (p["activity"] as num).toDouble()).abs() < 0.001) {
+      if (((kActivities[i][1] as double) - (p["activity"] as num).toDouble()).abs() < 0.001) {
         pActivity = i;
       }
     }
     for (int i = 0; i < kRates.length; i++) {
-      if ((kRates[i][1] as double - (p["goal_rate"] as num).toDouble()).abs() < 0.001) {
+      if (((kRates[i][1] as double) - (p["goal_rate"] as num).toDouble()).abs() < 0.001) {
         pRate = i;
       }
     }
