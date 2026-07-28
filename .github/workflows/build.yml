@@ -1,0 +1,29 @@
+name: APK Uret
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Android platform dosyalarini uret
+        run: flutter create --platforms android --org com.diyettakip .
+      - name: AdMob ve internet iznini manifeste gom
+        run: |
+          sed -i 's|apk/res/android">|apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>|' android/app/src/main/AndroidManifest.xml
+          sed -i 's|</application>|    <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-5113050441647801~5970291753"/>\n    </application>|' android/app/src/main/AndroidManifest.xml
+          cat android/app/src/main/AndroidManifest.xml
+      - run: flutter pub get
+      - run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DiyetTakip-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
