@@ -43,6 +43,8 @@ Future<void> scheduleReminders(bool enabled) async {
       var t = tz.TZDateTime(tz.local, now.year, now.month, now.day, h, m);
       if (t.isBefore(now)) t = t.add(const Duration(days: 1));
       await notifPlugin.zonedSchedule(id, title, body, t, details,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
           matchDateTimeComponents: DateTimeComponents.time);
     }
