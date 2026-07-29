@@ -2135,9 +2135,6 @@ class _FoodPickerSheetState extends State<FoodPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final results = kFoods
-        .where((f) => trLower(f[0] as String).contains(trLower(query)))
-        .toList();
     return Padding(
       padding: EdgeInsets.only(
         left: 16, right: 16, top: 16,
@@ -2151,6 +2148,9 @@ class _FoodPickerSheetState extends State<FoodPickerSheet> {
   }
 
   Widget _buildList() {
+    final results = kFoods
+        .where((f) => trLower(f[0] as String).contains(trLower(query)))
+        .toList();
     return Column(children: [
       Text("${kMealIcons[widget.meal]} ${widget.meal} — Yiyecek Seç",
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
