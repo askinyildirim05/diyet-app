@@ -2,11 +2,63 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest.dart' as tzdata;
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   MobileAds.instance.initialize();
+  initNotifications();
   runApp(const DiyetApp());
+}
+
+// ================= BİLDİRİMLER =================
+final FlutterLocalNotificationsPlugin notifPlugin =
+    FlutterLocalNotificationsPlugin();
+
+Future<void> initNotifications() async {
+  try {
+    tzdata.initializeTimeZones();
+    tz.setLocalLocation(tz.getLocation('Europe/Istanbul'));
+    const settings = InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'));
+    await notifPlugin.initialize(settings);
+  } catch (_) {}
+}
+
+Future<void> scheduleReminders(bool enabled) async {
+  try {
+    await notifPlugin.cancelAll();
+    if (!enabled) return;
+    final androidImpl = notifPlugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await androidImpl?.requestNotificationsPermission();
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails('hatirlatma', 'Hatırlatmalar',
+          importance: Importance.high, priority: Priority.high),
+    );
+    Future<void> daily(int id, int h, int m, String title, String body) async {
+      final now = tz.TZDateTime.now(tz.local);
+      var t = tz.TZDateTime(tz.local, now.year, now.month, now.day, h, m);
+      if (t.isBefore(now)) t = t.add(const Duration(days: 1));
+      await notifPlugin.zonedSchedule(id, title, body, t, details,
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          matchDateTimeComponents: DateTimeComponents.time);
+    }
+
+    await daily(1, 8, 0, "🍳 Kahvaltı zamanı!",
+        "Güne iyi başla — kahvaltını yaptıysan uygulamada işaretle ✓");
+    await daily(2, 12, 30, "☀️ Öğle yemeği zamanı!",
+        "Öğününü yediysen ✓ koy, kalorisini kaydetmeyi unutma");
+    await daily(3, 19, 0, "🌙 Akşam yemeği zamanı!",
+        "Hafif bir akşam yemeği hedefe hızlı götürür");
+    await daily(4, 10, 0, "💧 Su iç!", "Bir bardak su içmeyi unutma");
+    await daily(5, 14, 30, "💧 Su iç!", "Gün ortası — suyunu ihmal etme");
+    await daily(6, 17, 30, "💧 Su iç!", "Bir bardak daha, hedefe yaklaş");
+    await daily(7, 21, 0, "📝 Günü kapat",
+        "Bugünkü öğünlerini ve kilonu kaydettin mi?");
+  } catch (_) {}
 }
 
 // ================= REKLAM KİMLİKLERİ =================
@@ -266,10 +318,12 @@ class HomePage extends StatefulWidget {
 class _HomeState extends State<HomePage> {
   Map<String, dynamic> state = {"profile": null, "days": <String, dynamic>{}, "recent": []};
   bool onboardSeen = true;
+  bool notifOn = false;
   int tabIndex = 0;
   DateTime currentDay = DateTime.now();
   bool loaded = false;
-  Map<String, List<String>>? currentPlan;
+  List<Map<String, List<String>>> currentPlans = [];
+  int planDays = 1;
 
   // profil form kontrolcüleri
   final cName = TextEditingController();
@@ -367,6 +421,8 @@ class _HomeState extends State<HomePage> {
       } catch (_) {}
     }
     onboardSeen = prefs.getBool('onboard_seen') ?? false;
+    notifOn = state["notif"] == true;
+    if (notifOn) scheduleReminders(true);
     if (state["profile"] != null) _fillProfileForm();
     setState(() {
       loaded = true;
@@ -396,6 +452,10 @@ class _HomeState extends State<HomePage> {
     final dd = Map<String, dynamic>.from(days[k] as Map);
     days[k] = dd;
     dd.putIfAbsent("water", () => 0);
+    // eski bardak verisini ml'ye çevir
+    dd.putIfAbsent(
+        "water_ml", () => ((dd["water"] ?? 0) as num).toInt() * 200);
+    dd.putIfAbsent("done", () => <String, bool>{});
     dd["meals"] ??= {for (var m in kMeals) m: []};
     for (var m in kMeals) {
       (dd["meals"] as Map).putIfAbsent(m, () => []);
@@ -783,48 +843,63 @@ class _HomeState extends State<HomePage> {
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               const SizedBox(height: 8),
               Builder(builder: (_) {
-                final glasses = (dd["water"] as num).toInt();
-                final goal = t != null ? ((t["water_ml"] as int) / 200).round() : 8;
+                final ml = (dd["water_ml"] as num? ?? 0).toInt();
+                final goal = t != null ? t["water_ml"] as int : 2000;
                 return Column(children: [
-                  Row(children: [
-                    ElevatedButton.icon(
-                      onPressed: () => setState(() {
-                        dd["water"] = glasses + 1;
-                        _save();
-                      }),
-                      icon: const Icon(Icons.add),
-                      label: const Text("1 Bardak"),
-                      style: ElevatedButton.styleFrom(backgroundColor: kWater),
-                    ),
-                    const SizedBox(width: 8),
+                  Wrap(spacing: 6, runSpacing: 6, children: [
+                    for (var amt in [200, 330, 500])
+                      ElevatedButton(
+                        onPressed: () => setState(() {
+                          dd["water_ml"] = ml + amt;
+                          _save();
+                        }),
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: kWater,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8)),
+                        child: Text("+$amt ml",
+                            style: const TextStyle(fontSize: 13)),
+                      ),
                     IconButton(
-                      onPressed: glasses > 0
+                      onPressed: ml > 0
                           ? () => setState(() {
-                                dd["water"] = glasses - 1;
+                                dd["water_ml"] = (ml - 200).clamp(0, 100000);
                                 _save();
                               })
                           : null,
                       icon: const Icon(Icons.remove_circle_outline),
+                      tooltip: "200 ml geri al",
                     ),
-                    const Spacer(),
-                    Text("$glasses / $goal bardak",
-                        style: const TextStyle(
-                            color: kWater, fontWeight: FontWeight.bold, fontSize: 15)),
                   ]),
                   const SizedBox(height: 8),
-                  LinearProgressIndicator(
-                    value: (glasses / goal).clamp(0.0, 1.0),
-                    minHeight: 8,
-                    borderRadius: BorderRadius.circular(99),
-                    backgroundColor: const Color(0xFFEEE7D9),
-                    color: kWater,
-                  ),
-                  if (glasses >= goal)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 6),
-                      child: Text("✅ Günlük su hedefin tamam!",
-                          style: TextStyle(color: kGreen, fontWeight: FontWeight.bold)),
+                  Row(children: [
+                    Expanded(
+                      child: LinearProgressIndicator(
+                        value: (ml / goal).clamp(0.0, 1.0),
+                        minHeight: 8,
+                        borderRadius: BorderRadius.circular(99),
+                        backgroundColor: const Color(0xFFEEE7D9),
+                        color: kWater,
+                      ),
                     ),
+                    const SizedBox(width: 10),
+                    Text("$ml / $goal ml",
+                        style: const TextStyle(
+                            color: kWater, fontWeight: FontWeight.bold, fontSize: 14)),
+                  ]),
+                  const SizedBox(height: 4),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      ml >= goal
+                          ? "✅ Günlük su hedefin tamam!"
+                          : "≈ ${(ml / 250).toStringAsFixed(1)} bardak içtin",
+                      style: TextStyle(
+                          color: ml >= goal ? kGreen : kMuted,
+                          fontWeight: ml >= goal ? FontWeight.bold : FontWeight.normal,
+                          fontSize: 12.5),
+                    ),
+                  ),
                 ]);
               }),
             ]),
@@ -845,6 +920,8 @@ class _HomeState extends State<HomePage> {
     for (var it in items) {
       sub += (it["kcal"] as num).toInt();
     }
+    final doneMap = dd["done"] as Map? ?? {};
+    final isEaten = doneMap[meal] == true;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -852,9 +929,28 @@ class _HomeState extends State<HomePage> {
           Row(children: [
             Text("${kMealIcons[meal]} $meal",
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            const SizedBox(width: 4),
+            InkWell(
+              onTap: () => setState(() {
+                (dd["done"] as Map)[meal] = !isEaten;
+                _save();
+              }),
+              borderRadius: BorderRadius.circular(99),
+              child: Icon(
+                isEaten ? Icons.check_circle : Icons.circle_outlined,
+                color: isEaten ? kGreen : kMuted,
+                size: 22,
+              ),
+            ),
             const Spacer(),
             Text("$sub kk", style: const TextStyle(color: kAccent, fontWeight: FontWeight.bold)),
           ]),
+          if (isEaten)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 2),
+              child: Text("✔ Yedim",
+                  style: TextStyle(color: kGreen, fontSize: 11, fontWeight: FontWeight.bold)),
+            ),
           if (items.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
@@ -1160,78 +1256,117 @@ class _HomeState extends State<HomePage> {
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text("📋 Otomatik Günlük Diyet Listesi",
+              const Text("📋 Akıllı Diyet Listesi",
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 6),
               Text(
                 t != null
-                    ? "Hedefin: ${t["target"]} kk/gün · Dağılım: Sabah %25, Öğle %35, Akşam %30, Ara %10\nHer oluşturmada farklı bir menü çıkar."
+                    ? "Hedefin: ${t["target"]} kk/gün · Dağılım: Sabah %25, Öğle %35, Akşam %30, Ara %10\n"
+                        "🧠 Planlayıcı önceki listeleri hatırlar — aynı yemekleri üst üste tekrar etmez."
                     : "Liste için önce Profil sekmesinden bilgilerini gir.",
                 style: const TextStyle(color: kMuted, fontSize: 13, height: 1.4),
               ),
               const SizedBox(height: 10),
               Row(children: [
+                ChoiceChip(
+                  label: const Text("1 Günlük"),
+                  selected: planDays == 1,
+                  selectedColor: const Color(0xFFF7E8DD),
+                  onSelected: (_) => setState(() => planDays = 1),
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text("7 Günlük (Haftalık)"),
+                  selected: planDays == 7,
+                  selectedColor: const Color(0xFFF7E8DD),
+                  onSelected: (_) => setState(() => planDays = 7),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
                 ElevatedButton.icon(
-                  onPressed: t == null ? null : _makePlan,
+                  onPressed: t == null ? null : _makePlans,
                   icon: const Text("🔀"),
                   label: const Text("Liste Oluştur"),
                 ),
                 const SizedBox(width: 8),
-                if (currentPlan != null)
+                if (currentPlans.isNotEmpty)
                   OutlinedButton.icon(
-                    onPressed: _applyPlan,
+                    onPressed: _applyPlans,
                     icon: const Text("✔"),
-                    label: const Text("Bugüne Uygula"),
+                    label: Text(planDays == 1 ? "Bugüne Uygula" : "7 Güne Uygula"),
                   ),
               ]),
             ]),
           ),
         ),
-        if (currentPlan != null)
+        for (int di = 0; di < currentPlans.length; di++)
           Card(
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(
+                  "🗓 ${fmtDate(currentDay.add(Duration(days: di)))}${di == 0 ? '  (Bugün)' : ''}",
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
+                ),
+                const SizedBox(height: 8),
                 for (var m in kMeals) ...[
                   Text("${kMealIcons[m]} $m",
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 15, color: kAccent)),
+                          fontWeight: FontWeight.bold, fontSize: 14, color: kAccent)),
                   const SizedBox(height: 4),
-                  for (var ad in currentPlan![m]!)
+                  for (var ad in currentPlans[di][m]!)
                     Padding(
                       padding: const EdgeInsets.only(left: 10, bottom: 2),
                       child: Text("• $ad — ${foodPorsiyon(ad)} (${foodKcal(ad)} kk)",
                           style: const TextStyle(fontSize: 13.5)),
                     ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                 ],
                 Builder(builder: (_) {
                   int tot = 0;
-                  currentPlan!.forEach((_, items) {
+                  currentPlans[di].forEach((_, items) {
                     for (var ad in items) {
                       tot += foodKcal(ad);
                     }
                   });
-                  return Text(
-                    "Toplam: ~$tot kk / Hedef: ${t?["target"] ?? '-'} kk\n"
-                    "💧 Ayrıca ${t?["water_ml"] ?? 2000} ml su içmeyi unutma!",
-                    style: const TextStyle(fontWeight: FontWeight.bold, height: 1.4),
-                  );
+                  return Text("Gün toplamı: ~$tot kk / Hedef: ${t?["target"] ?? '-'} kk",
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5));
                 }),
               ]),
+            ),
+          ),
+        if (currentPlans.isNotEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                "💧 Her gün ${t?["water_ml"] ?? 2000} ml su içmeyi unutma!\n"
+                "✔ 'Uygula' dersen liste${planDays == 7 ? 'ler bugünden itibaren 7 güne' : ' bugüne'} işlenir, sen sadece yedikçe işaretlersin.",
+                style: const TextStyle(color: kMuted, fontSize: 12.5, height: 1.4),
+              ),
             ),
           ),
       ],
     );
   }
 
-  void _makePlan() {
+  void _makePlans() {
     final t = calcTargets()!;
     final target = t["target"] as int;
-    final plan = <String, List<String>>{};
-    for (var meal in kMeals) {
-      final budget = target * kMealFrac[meal]!;
-      final pool = List<String>.from(kPlanPools[meal]!)..shuffle();
+    final history = List<String>.from(state["plan_history"] as List? ?? []);
+    final used = <String>{};
+    final plans = <Map<String, List<String>>>[];
+
+    List<String> pickMeal(String meal, double budget) {
+      final base = List<String>.from(kPlanPools[meal]!)..shuffle();
+      // öncelik: bu listede ve geçmiş listelerde kullanılmamış olanlar
+      final fresh =
+          base.where((a) => !used.contains(a) && !history.contains(a)).toList();
+      final notUsed = base.where((a) => !used.contains(a)).toList();
+      final pool = fresh.length >= 3
+          ? fresh
+          : (notUsed.length >= 3 ? notUsed : base);
       final items = <String>[];
       int total = 0;
       for (var ad in pool) {
@@ -1239,33 +1374,61 @@ class _HomeState extends State<HomePage> {
         if (total + kcal <= budget * 1.05) {
           items.add(ad);
           total += kcal;
+          used.add(ad);
         }
         if (total >= budget * 0.85) break;
       }
-      plan[meal] = items;
+      return items;
     }
-    setState(() => currentPlan = plan);
+
+    for (int day = 0; day < planDays; day++) {
+      final plan = <String, List<String>>{};
+      for (var meal in kMeals) {
+        plan[meal] = pickMeal(meal, target * kMealFrac[meal]!);
+      }
+      plans.add(plan);
+    }
+    setState(() => currentPlans = plans);
   }
 
-  void _applyPlan() {
-    if (currentPlan == null) return;
-    final dd = dayData(currentDay);
+  void _applyPlans() {
+    if (currentPlans.isEmpty) return;
     int existing = 0;
-    for (var m in kMeals) {
-      existing += (dd["meals"][m] as List).length;
+    for (int i = 0; i < currentPlans.length; i++) {
+      final dd = dayData(currentDay.add(Duration(days: i)));
+      for (var m in kMeals) {
+        existing += (dd["meals"][m] as List).length;
+      }
     }
     void doApply() {
       setState(() {
-        for (var m in kMeals) {
-          dd["meals"][m] = [
-            for (var ad in currentPlan![m]!)
-              {"food": ad, "por": 1, "kcal": foodKcal(ad)}
-          ];
+        final usedFoods = <String>[];
+        for (int i = 0; i < currentPlans.length; i++) {
+          final dd = dayData(currentDay.add(Duration(days: i)));
+          for (var m in kMeals) {
+            dd["meals"][m] = [
+              for (var ad in currentPlans[i][m]!)
+                {"food": ad, "por": 1, "kcal": foodKcal(ad)}
+            ];
+            usedFoods.addAll(currentPlans[i][m]!);
+          }
         }
+        // hafıza: kullanılan yemekleri kaydet (son 40)
+        final history = List<String>.from(state["plan_history"] as List? ?? []);
+        for (var f in usedFoods) {
+          history.remove(f);
+          history.add(f);
+        }
+        state["plan_history"] =
+            history.length > 40 ? history.sublist(history.length - 40) : history;
+        state["plans_applied"] =
+            (state["plans_applied"] as num? ?? 0).toInt() + currentPlans.length;
         _save();
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Diyet listesi güne uygulandı ✔")));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(planDays == 1
+              ? "Diyet listesi bugüne uygulandı ✔"
+              : "7 günlük liste uygulandı ✔")));
       _maybeShowInterstitial();
     }
 
@@ -1275,7 +1438,8 @@ class _HomeState extends State<HomePage> {
         builder: (ctx) => AlertDialog(
           backgroundColor: kCard,
           title: const Text("Emin misin?"),
-          content: Text("Bu günde zaten $existing kayıt var. Liste üzerine yazılsın mı?"),
+          content: Text(
+              "Bu günlerde toplam $existing kayıt var. Liste üzerine yazılsın mı?"),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Vazgeç")),
             ElevatedButton(
@@ -1364,6 +1528,30 @@ class _HomeState extends State<HomePage> {
                   icon: const Icon(Icons.calculate),
                   label: const Text("Kaydet ve Hesapla"),
                 ),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                value: notifOn,
+                onChanged: (v) async {
+                  setState(() => notifOn = v);
+                  state["notif"] = v;
+                  _save();
+                  await scheduleReminders(v);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(v
+                            ? "🔔 Bildirimler açıldı: yemek saatleri + su hatırlatma"
+                            : "🔕 Bildirimler kapatıldı")));
+                  }
+                },
+                secondary: const Text("🔔", style: TextStyle(fontSize: 22)),
+                title: const Text("Hatırlatmalar",
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                subtitle: const Text(
+                    "Yemek saatleri (08:00, 12:30, 19:00) ve su bildirimleri",
+                    style: TextStyle(fontSize: 11.5, color: kMuted)),
+                activeColor: kAccent,
+                contentPadding: EdgeInsets.zero,
               ),
             ]),
           ),
@@ -1457,9 +1645,15 @@ class _HomeState extends State<HomePage> {
   Widget _buildBadges() {
     final daysMap = state["days"] as Map;
     bool anyFood = false;
-    int totalWater = 0;
+    int totalWaterMl = 0;
+    int waterGoalDays = 0;
+    final t = calcTargets();
+    final waterGoal = t != null ? t["water_ml"] as int : 2000;
     daysMap.forEach((_, dd) {
-      totalWater += ((dd["water"] ?? 0) as num).toInt();
+      final ml = ((dd["water_ml"] ?? ((dd["water"] ?? 0) as num).toInt() * 200) as num)
+          .toInt();
+      totalWaterMl += ml;
+      if (ml >= waterGoal) waterGoalDays++;
       final meals = dd["meals"] as Map? ?? {};
       for (var m in kMeals) {
         if ((meals[m] as List? ?? []).isNotEmpty) anyFood = true;
@@ -1471,14 +1665,25 @@ class _HomeState extends State<HomePage> {
     if (entries.length >= 2) {
       lost = entries.first.value - entries.last.value;
     }
+    final plansApplied = (state["plans_applied"] as num? ?? 0).toInt();
+    bool goalReached = false;
+    final prof = state["profile"];
+    if (prof != null && prof["target_weight"] != null && entries.isNotEmpty) {
+      goalReached =
+          entries.last.value <= (prof["target_weight"] as num).toDouble();
+    }
 
     final badges = <List<Object>>[
-      ["🍽", "İlk Adım", "İlk yiyecek kaydını yaptın", anyFood],
+      ["🍽", "İlk Adım", "İlk yiyecek kaydı", anyFood],
       ["🔥", "3 Günlük Seri", "3 gün üst üste kayıt", streak >= 3],
       ["⚡", "Haftalık Seri", "7 gün üst üste kayıt", streak >= 7],
-      ["💧", "Su Dostu", "Toplam 50 bardak su", totalWater >= 50],
-      ["⚖", "Tartının Hakimi", "İlk kilo kaydını girdin", entries.isNotEmpty],
+      ["💧", "Su Dostu", "Toplam 10 litre su", totalWaterMl >= 10000],
+      ["💦", "Su Şampiyonu", "3 gün su hedefi tamam", waterGoalDays >= 3],
+      ["⚖", "Tartının Hakimi", "İlk kilo kaydı", entries.isNotEmpty],
+      ["📋", "Liste Ustası", "İlk diyet listesi", plansApplied >= 1],
+      ["🗓", "Planlı Yaşam", "7 günlük plan uygula", plansApplied >= 7],
       ["🏆", "5 Kilo Gitti!", "5 kg verdin", lost >= 5],
+      ["🎯", "Hedef Tamam!", "Hedef kiloya ulaştın", goalReached],
     ];
 
     return Card(
