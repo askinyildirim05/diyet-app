@@ -27,7 +27,7 @@ Future<void> initNotifications() async {
   } catch (_) {}
 }
 
-Future<void> scheduleReminders(bool enabled) async {
+Future<void> scheduleReminders(bool enabled, {int waterHours = 3}) async {
   try {
     await notifPlugin.cancelAll();
     if (!enabled) return;
@@ -55,11 +55,19 @@ Future<void> scheduleReminders(bool enabled) async {
         "Öğününü yediysen ✓ koy, kalorisini kaydetmeyi unutma");
     await daily(3, 19, 0, "🌙 Akşam yemeği zamanı!",
         "Hafif bir akşam yemeği hedefe hızlı götürür");
-    await daily(4, 10, 0, "💧 Su iç!", "Bir bardak su içmeyi unutma");
-    await daily(5, 14, 30, "💧 Su iç!", "Gün ortası — suyunu ihmal etme");
-    await daily(6, 17, 30, "💧 Su iç!", "Bir bardak daha, hedefe yaklaş");
     await daily(7, 21, 0, "📝 Günü kapat",
         "Bugünkü öğünlerini ve kilonu kaydettin mi?");
+    // su hatırlatmaları: 09:00 - 21:00 arası, kullanıcının seçtiği aralıkla
+    if (waterHours > 0) {
+      int id = 100;
+      int h = 9;
+      while (h <= 20) {
+        await daily(id, h, 0, "💧 Su zamanı!",
+            "Bir bardak su iç — hedefe birlikte ulaşalım");
+        id++;
+        h += waterHours;
+      }
+    }
   } catch (_) {}
 }
 
@@ -424,7 +432,10 @@ class _HomeState extends State<HomePage> {
     }
     onboardSeen = prefs.getBool('onboard_seen') ?? false;
     notifOn = state["notif"] == true;
-    if (notifOn) scheduleReminders(true);
+    if (notifOn) {
+      scheduleReminders(true,
+          waterHours: (state["water_notif_h"] as num? ?? 3).toInt());
+    }
     if (state["profile"] != null) _fillProfileForm();
     setState(() {
       loaded = true;
@@ -457,12 +468,46 @@ class _HomeState extends State<HomePage> {
     // eski bardak verisini ml'ye çevir
     dd.putIfAbsent(
         "water_ml", () => ((dd["water"] ?? 0) as num).toInt() * 200);
+    // su kayıt listesi (tek tek silinebilir)
+    if (dd["water_log"] == null) {
+      final ml = (dd["water_ml"] as num? ?? 0).toInt();
+      dd["water_log"] = ml > 0
+          ? [
+              {"ml": ml, "t": "--:--"}
+            ]
+          : <Map<String, dynamic>>[];
+    }
     dd.putIfAbsent("done", () => <String, bool>{});
     dd["meals"] ??= {for (var m in kMeals) m: []};
     for (var m in kMeals) {
       (dd["meals"] as Map).putIfAbsent(m, () => []);
     }
     return dd;
+  }
+
+  // ---- Türkçe uyumlu arama (I/ı, İ/i sorunu) ----
+  String trLower(String s) => s
+      .replaceAll('I', 'ı')
+      .replaceAll('İ', 'i')
+      .toLowerCase();
+
+  // ---- yiyecek ekleme (hata olursa kullanıcıya göster) ----
+  void addFood(String meal, String ad, double por) {
+    try {
+      final kcal = (foodKcal(ad) * por).round();
+      final meals = dayData(currentDay)["meals"] as Map;
+      (meals[meal] as List).add({"food": ad, "por": por, "kcal": kcal});
+      _pushRecent(ad);
+      _save();
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          duration: const Duration(seconds: 1),
+          content: Text("✔ $ad eklendi ($kcal kk)")));
+      _maybeShowInterstitial();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Eklenemedi: $e")));
+    }
   }
 
   // ---- son eklenen yiyecekler ----
@@ -714,6 +759,143 @@ class _HomeState extends State<HomePage> {
     });
   }
 
+  // ================= AYLIK TAKVİM SEÇİCİ =================
+  void _showMonthPicker() {
+    int viewY = currentDay.year;
+    int viewM = currentDay.month;
+    bool dayHasData(DateTime d) {
+      final dd = (state["days"] as Map)[_key(d)];
+      if (dd == null) return false;
+      final meals = dd["meals"] as Map? ?? {};
+      for (var m in kMeals) {
+        if ((meals[m] as List? ?? []).isNotEmpty) return true;
+      }
+      return dd["weight"] != null;
+    }
+
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => StatefulBuilder(builder: (ctx, setDlg) {
+        final first = DateTime(viewY, viewM, 1);
+        final daysInMonth = DateTime(viewY, viewM + 1, 0).day;
+        final startOffset = first.weekday - 1; // Pzt=0
+        final today = DateTime.now();
+        return AlertDialog(
+          backgroundColor: kCard,
+          contentPadding: const EdgeInsets.all(12),
+          title: Row(children: [
+            IconButton(
+              icon: const Icon(Icons.chevron_left),
+              onPressed: () => setDlg(() {
+                viewM--;
+                if (viewM < 1) {
+                  viewM = 12;
+                  viewY--;
+                }
+              }),
+            ),
+            Expanded(
+              child: Text("${kAylar[viewM]} $viewY",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+            IconButton(
+              icon: const Icon(Icons.chevron_right),
+              onPressed: () => setDlg(() {
+                viewM++;
+                if (viewM > 12) {
+                  viewM = 1;
+                  viewY++;
+                }
+              }),
+            ),
+          ]),
+          content: SizedBox(
+            width: 300,
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Row(children: [
+                for (var g in kGunler)
+                  Expanded(
+                    child: Text(g,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            fontSize: 11,
+                            color: kMuted,
+                            fontWeight: FontWeight.bold)),
+                  ),
+              ]),
+              const SizedBox(height: 6),
+              GridView.count(
+                crossAxisCount: 7,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  for (int i = 0; i < startOffset; i++) const SizedBox(),
+                  for (int d = 1; d <= daysInMonth; d++)
+                    Builder(builder: (_) {
+                      final date = DateTime(viewY, viewM, d);
+                      final isSel = _key(date) == _key(currentDay);
+                      final isToday = _key(date) == _key(today);
+                      final has = dayHasData(date);
+                      return InkWell(
+                        onTap: () {
+                          setState(() => currentDay = date);
+                          Navigator.pop(dlgCtx);
+                        },
+                        borderRadius: BorderRadius.circular(99),
+                        child: Container(
+                          margin: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: isSel
+                                ? kAccent
+                                : (isToday
+                                    ? const Color(0xFFF7E8DD)
+                                    : Colors.transparent),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text("$d",
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: isSel || isToday
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                      color: isSel ? Colors.white : kInk)),
+                              if (has)
+                                Container(
+                                  width: 5,
+                                  height: 5,
+                                  decoration: BoxDecoration(
+                                    color: isSel ? Colors.white : kGreen,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                ],
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                setState(() => currentDay = DateTime.now());
+                Navigator.pop(dlgCtx);
+              },
+              child: const Text("Bugüne dön"),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+
   // ================= BUGÜN (BESLENME) =================
   Widget _buildToday(Map<String, dynamic>? t) {
     final dd = dayData(currentDay);
@@ -739,13 +921,26 @@ class _HomeState extends State<HomePage> {
                     onPressed: () => setState(
                         () => currentDay = currentDay.subtract(const Duration(days: 1)))),
                 Expanded(
-                  child: Column(children: [
-                    Text(fmtDate(currentDay),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    if (isToday)
-                      const Text("Bugün", style: TextStyle(color: kMuted, fontSize: 12)),
-                  ]),
+                  child: InkWell(
+                    onTap: _showMonthPicker,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Column(children: [
+                        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          const Icon(Icons.calendar_month,
+                              size: 16, color: kAccent),
+                          const SizedBox(width: 5),
+                          Text(fmtDate(currentDay),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 15)),
+                        ]),
+                        Text(isToday ? "Bugün" : "Ay görünümü için dokun",
+                            style: const TextStyle(color: kMuted, fontSize: 11)),
+                      ]),
+                    ),
+                  ),
                 ),
                 TextButton(
                     onPressed: () => setState(() => currentDay = DateTime.now()),
@@ -782,27 +977,74 @@ class _HomeState extends State<HomePage> {
                   final target = t["target"] as int;
                   final left = target - total;
                   final ok = left >= 0;
-                  return Column(children: [
-                    LinearProgressIndicator(
-                      value: (total / target).clamp(0.0, 1.0),
-                      minHeight: 10,
-                      borderRadius: BorderRadius.circular(99),
-                      backgroundColor: const Color(0xFFEEE7D9),
-                      color: ok ? kAccent : kRed,
+                  final pct = (total / target).clamp(0.0, 1.0);
+                  return Row(children: [
+                    SizedBox(
+                      width: 110,
+                      height: 110,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          SizedBox(
+                            width: 110,
+                            height: 110,
+                            child: CircularProgressIndicator(
+                              value: pct,
+                              strokeWidth: 11,
+                              backgroundColor: const Color(0xFFEEE7D9),
+                              color: ok ? kAccent : kRed,
+                              strokeCap: StrokeCap.round,
+                            ),
+                          ),
+                          Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text("$total",
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 21,
+                                      color: kInk)),
+                              const Text("kalori",
+                                  style:
+                                      TextStyle(color: kMuted, fontSize: 11)),
+                              Text("%${(pct * 100).round()}",
+                                  style: TextStyle(
+                                      color: ok ? kAccent : kRed,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      ok
-                          ? "$total / $target kk — ✅ $left kk hakkın kaldı"
-                          : "$total / $target kk — ⚠ Hedefi ${-left} kk aştın!",
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 15,
-                          color: total == 0 ? kInk : (ok ? kGreen : kRed)),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      "Öneri: ${t["protein"]} gr protein · ${t["carb"]} gr karb · ${t["fat"]} gr yağ",
-                      style: const TextStyle(color: kMuted, fontSize: 12),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Hedef: $target kk",
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14)),
+                            const SizedBox(height: 4),
+                            Text(
+                              ok
+                                  ? "✅ $left kk hakkın kaldı"
+                                  : "⚠ Hedefi ${-left} kk aştın!",
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13.5,
+                                  color: total == 0
+                                      ? kMuted
+                                      : (ok ? kGreen : kRed)),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              "🥩 ${t["protein"]}g protein\n🍞 ${t["carb"]}g karbonhidrat\n🥑 ${t["fat"]}g yağ",
+                              style: const TextStyle(
+                                  color: kMuted, fontSize: 12, height: 1.5),
+                            ),
+                          ]),
                     ),
                   ]);
                 }),
@@ -847,62 +1089,108 @@ class _HomeState extends State<HomePage> {
               Builder(builder: (_) {
                 final ml = (dd["water_ml"] as num? ?? 0).toInt();
                 final goal = t != null ? t["water_ml"] as int : 2000;
-                return Column(children: [
-                  Wrap(spacing: 6, runSpacing: 6, children: [
-                    for (var amt in [200, 330, 500])
-                      ElevatedButton(
-                        onPressed: () => setState(() {
-                          dd["water_ml"] = ml + amt;
-                          _save();
-                        }),
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: kWater,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8)),
-                        child: Text("+$amt ml",
-                            style: const TextStyle(fontSize: 13)),
+                final log = dd["water_log"] as List? ?? [];
+                void addWater(int amt) {
+                  final now = TimeOfDay.now();
+                  setState(() {
+                    dd["water_ml"] = ml + amt;
+                    log.add({
+                      "ml": amt,
+                      "t":
+                          "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}"
+                    });
+                    _save();
+                  });
+                }
+
+                return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(spacing: 6, runSpacing: 6, children: [
+                        for (var amt in [100, 200, 330, 500])
+                          ElevatedButton(
+                            onPressed: () => addWater(amt),
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: kWater,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 8)),
+                            child: Text("+$amt",
+                                style: const TextStyle(fontSize: 13)),
+                          ),
+                      ]),
+                      const SizedBox(height: 4),
+                      const Text("☝ bardak ≈ 200 ml · küçük şişe = 330 ml · büyük şişe = 500 ml",
+                          style: TextStyle(color: kMuted, fontSize: 10.5)),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        Expanded(
+                          child: LinearProgressIndicator(
+                            value: (ml / goal).clamp(0.0, 1.0),
+                            minHeight: 8,
+                            borderRadius: BorderRadius.circular(99),
+                            backgroundColor: const Color(0xFFEEE7D9),
+                            color: kWater,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text("$ml / $goal ml",
+                            style: const TextStyle(
+                                color: kWater,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14)),
+                      ]),
+                      const SizedBox(height: 4),
+                      Text(
+                        ml >= goal
+                            ? "✅ Günlük su hedefin tamam, harikasın!"
+                            : "≈ ${(ml / 250).toStringAsFixed(1)} bardak içtin — ${goal - ml} ml kaldı",
+                        style: TextStyle(
+                            color: ml >= goal ? kGreen : kMuted,
+                            fontWeight:
+                                ml >= goal ? FontWeight.bold : FontWeight.normal,
+                            fontSize: 12.5),
                       ),
-                    IconButton(
-                      onPressed: ml > 0
-                          ? () => setState(() {
-                                dd["water_ml"] = (ml - 200).clamp(0, 100000);
-                                _save();
-                              })
-                          : null,
-                      icon: const Icon(Icons.remove_circle_outline),
-                      tooltip: "200 ml geri al",
-                    ),
-                  ]),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    Expanded(
-                      child: LinearProgressIndicator(
-                        value: (ml / goal).clamp(0.0, 1.0),
-                        minHeight: 8,
-                        borderRadius: BorderRadius.circular(99),
-                        backgroundColor: const Color(0xFFEEE7D9),
-                        color: kWater,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text("$ml / $goal ml",
-                        style: const TextStyle(
-                            color: kWater, fontWeight: FontWeight.bold, fontSize: 14)),
-                  ]),
-                  const SizedBox(height: 4),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      ml >= goal
-                          ? "✅ Günlük su hedefin tamam!"
-                          : "≈ ${(ml / 250).toStringAsFixed(1)} bardak içtin",
-                      style: TextStyle(
-                          color: ml >= goal ? kGreen : kMuted,
-                          fontWeight: ml >= goal ? FontWeight.bold : FontWeight.normal,
-                          fontSize: 12.5),
-                    ),
-                  ),
-                ]);
+                      if (log.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        const Text("Bugünkü kayıtlar (silmek için ✕):",
+                            style: TextStyle(
+                                color: kMuted,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        Wrap(spacing: 6, runSpacing: 6, children: [
+                          for (int i = 0; i < log.length; i++)
+                            Container(
+                              padding: const EdgeInsets.only(
+                                  left: 8, right: 2, top: 2, bottom: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE7F0F6),
+                                borderRadius: BorderRadius.circular(99),
+                              ),
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                Text("💧 ${log[i]["ml"]} ml ${log[i]["t"]}",
+                                    style: const TextStyle(
+                                        fontSize: 11.5, color: kWater)),
+                                InkWell(
+                                  onTap: () => setState(() {
+                                    dd["water_ml"] = (ml -
+                                            (log[i]["ml"] as num).toInt())
+                                        .clamp(0, 100000);
+                                    log.removeAt(i);
+                                    _save();
+                                  }),
+                                  borderRadius: BorderRadius.circular(99),
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(3),
+                                    child: Icon(Icons.close,
+                                        size: 14, color: kMuted),
+                                  ),
+                                ),
+                              ]),
+                            ),
+                        ]),
+                      ],
+                    ]);
               }),
             ]),
           ),
@@ -991,7 +1279,7 @@ class _HomeState extends State<HomePage> {
     );
   }
 
-  // ---- yiyecek seçme penceresi ----
+  // ---- yiyecek seçme penceresi (tek pencere, 2 adım: seç → porsiyon) ----
   void _showFoodPicker(String meal) {
     showModalBottomSheet(
       context: context,
@@ -999,11 +1287,13 @@ class _HomeState extends State<HomePage> {
       backgroundColor: kCard,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
-      builder: (ctx) {
+      builder: (sheetCtx) {
         String query = "";
+        List? picked; // seçilen yiyecek [ad, porsiyon, kcal]
+        final cPortion = TextEditingController(text: "1");
         return StatefulBuilder(builder: (ctx, setSheet) {
           final results = kFoods
-              .where((f) => (f[0] as String).toLowerCase().contains(query.toLowerCase()))
+              .where((f) => trLower(f[0] as String).contains(trLower(query)))
               .toList();
           return Padding(
             padding: EdgeInsets.only(
@@ -1011,114 +1301,161 @@ class _HomeState extends State<HomePage> {
               bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
             ),
             child: SizedBox(
-              height: MediaQuery.of(ctx).size.height * 0.72,
-              child: Column(children: [
-                Text("$meal — Yiyecek Ekle",
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 10),
-                TextField(
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    hintText: "Ara... (örn: tavuk, simit, elma)",
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true,
-                    fillColor: kBg,
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none),
-                  ),
-                  onChanged: (v) => setSheet(() => query = v),
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: ListView(children: [
-                    if (query.isEmpty && recentFoods.isNotEmpty) ...[
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 6),
-                        child: Text("⭐ Son eklediklerin",
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                color: kMuted)),
-                      ),
-                      for (var ad in recentFoods)
-                        ListTile(
-                          dense: true,
-                          leading: const Text("🕘", style: TextStyle(fontSize: 16)),
-                          title: Text(ad, style: const TextStyle(fontSize: 14)),
-                          trailing: Text("${foodKcal(ad)} kk",
-                              style: const TextStyle(
-                                  color: kAccent, fontWeight: FontWeight.bold)),
-                          onTap: () {
-                            Navigator.pop(ctx);
-                            _askPortion(meal,
-                                kFoods.firstWhere((f) => f[0] == ad));
-                          },
+              height: MediaQuery.of(ctx).size.height * 0.75,
+              child: picked == null
+                  ? Column(children: [
+                      Text("${kMealIcons[meal]} $meal — Yiyecek Seç",
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16)),
+                      const SizedBox(height: 10),
+                      TextField(
+                        autofocus: true,
+                        decoration: InputDecoration(
+                          hintText: "Ara... (örn: tavuk, simit, elma)",
+                          prefixIcon: const Icon(Icons.search),
+                          filled: true,
+                          fillColor: kBg,
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none),
                         ),
-                      const Divider(),
-                    ],
-                    for (var f in results)
-                      ListTile(
-                        dense: true,
-                        title: Text(f[0] as String, style: const TextStyle(fontSize: 14)),
-                        subtitle: Text(f[1] as String,
-                            style: const TextStyle(fontSize: 12, color: kMuted)),
-                        trailing: Text("${f[2]} kk",
-                            style: const TextStyle(
-                                color: kAccent, fontWeight: FontWeight.bold)),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _askPortion(meal, f);
-                        },
+                        onChanged: (v) => setSheet(() => query = v),
                       ),
-                  ]),
-                ),
-              ]),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: ListView(children: [
+                          if (query.isEmpty && recentFoods.isNotEmpty) ...[
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 6),
+                              child: Text("⭐ Son eklediklerin",
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: kMuted)),
+                            ),
+                            for (var ad in recentFoods)
+                              ListTile(
+                                dense: true,
+                                leading: const Text("🕘",
+                                    style: TextStyle(fontSize: 16)),
+                                title: Text(ad,
+                                    style: const TextStyle(fontSize: 14)),
+                                trailing: Text("${foodKcal(ad)} kk",
+                                    style: const TextStyle(
+                                        color: kAccent,
+                                        fontWeight: FontWeight.bold)),
+                                onTap: () => setSheet(() => picked = kFoods
+                                    .firstWhere((f) => f[0] == ad)),
+                              ),
+                            const Divider(),
+                          ],
+                          if (results.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.all(24),
+                              child: Text("Sonuç bulunamadı 🔍",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: kMuted)),
+                            ),
+                          for (var f in results)
+                            ListTile(
+                              dense: true,
+                              title: Text(f[0] as String,
+                                  style: const TextStyle(fontSize: 14)),
+                              subtitle: Text(f[1] as String,
+                                  style: const TextStyle(
+                                      fontSize: 12, color: kMuted)),
+                              trailing: Text("${f[2]} kk",
+                                  style: const TextStyle(
+                                      color: kAccent,
+                                      fontWeight: FontWeight.bold)),
+                              onTap: () => setSheet(() => picked = f),
+                            ),
+                        ]),
+                      ),
+                    ])
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(children: [
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back),
+                            onPressed: () => setSheet(() => picked = null),
+                          ),
+                          Expanded(
+                            child: Text(picked![0] as String,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16)),
+                          ),
+                        ]),
+                        const SizedBox(height: 6),
+                        Text("1 porsiyon = ${picked![1]} · ${picked![2]} kk",
+                            style: const TextStyle(color: kMuted, fontSize: 13)),
+                        const SizedBox(height: 16),
+                        const Text("Kaç porsiyon yedin?",
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 14)),
+                        const SizedBox(height: 8),
+                        Wrap(spacing: 8, children: [
+                          for (var p in ["0.5", "1", "1.5", "2", "3"])
+                            ChoiceChip(
+                              label: Text(p),
+                              selected: cPortion.text == p,
+                              selectedColor: const Color(0xFFF7E8DD),
+                              onSelected: (_) =>
+                                  setSheet(() => cPortion.text = p),
+                            ),
+                        ]),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: cPortion,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          decoration: InputDecoration(
+                            labelText: "veya elle yaz (${picked![1]})",
+                            border: const OutlineInputBorder(),
+                          ),
+                          onChanged: (_) => setSheet(() {}),
+                        ),
+                        const SizedBox(height: 12),
+                        Builder(builder: (_) {
+                          final por = double.tryParse(
+                                  cPortion.text.replaceAll(",", ".")) ??
+                              0;
+                          final kk = ((picked![2] as int) * por).round();
+                          return Text("Toplam: $kk kalori",
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: kAccent));
+                        }),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 50,
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.check),
+                            label: const Text("Ekle",
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold)),
+                            onPressed: () {
+                              final por = double.tryParse(cPortion.text
+                                      .replaceAll(",", ".")) ??
+                                  0;
+                              if (por <= 0) return;
+                              final ad = picked![0] as String;
+                              Navigator.pop(sheetCtx);
+                              addFood(meal, ad, por);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
             ),
           );
         });
       },
-    );
-  }
-
-  void _askPortion(String meal, List f) {
-    final cPortion = TextEditingController(text: "1");
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: kCard,
-        title: Text(f[0] as String, style: const TextStyle(fontSize: 16)),
-        content: TextField(
-          controller: cPortion,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(
-            labelText: "Kaç porsiyon? (${f[1]})",
-            border: const OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Vazgeç")),
-          ElevatedButton(
-            onPressed: () {
-              final por = double.tryParse(cPortion.text.replaceAll(",", ".")) ?? 0;
-              if (por <= 0) return;
-              setState(() {
-                dayData(currentDay)["meals"][meal].add({
-                  "food": f[0],
-                  "por": por,
-                  "kcal": ((f[2] as int) * por).round(),
-                });
-                _pushRecent(f[0] as String);
-                _save();
-              });
-              Navigator.pop(ctx);
-              _maybeShowInterstitial();
-            },
-            child: const Text("Ekle"),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1538,7 +1875,9 @@ class _HomeState extends State<HomePage> {
                   setState(() => notifOn = v);
                   state["notif"] = v;
                   _save();
-                  await scheduleReminders(v);
+                  await scheduleReminders(v,
+                      waterHours:
+                          (state["water_notif_h"] as num? ?? 3).toInt());
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                         content: Text(v
@@ -1555,6 +1894,36 @@ class _HomeState extends State<HomePage> {
                 activeColor: kAccent,
                 contentPadding: EdgeInsets.zero,
               ),
+              if (notifOn) ...[
+                const SizedBox(height: 4),
+                const Text("💧 Su hatırlatması ne sıklıkta gelsin?",
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const SizedBox(height: 6),
+                Wrap(spacing: 6, children: [
+                  for (var opt in [
+                    [1, "1 saatte bir"],
+                    [2, "2 saatte bir"],
+                    [3, "3 saatte bir"],
+                    [0, "Kapalı"]
+                  ])
+                    ChoiceChip(
+                      label: Text(opt[1] as String,
+                          style: const TextStyle(fontSize: 12)),
+                      selected:
+                          (state["water_notif_h"] as num? ?? 3).toInt() ==
+                              opt[0],
+                      selectedColor: const Color(0xFFE7F0F6),
+                      onSelected: (_) async {
+                        setState(() => state["water_notif_h"] = opt[0]);
+                        _save();
+                        await scheduleReminders(true,
+                            waterHours: opt[0] as int);
+                      },
+                    ),
+                ]),
+                const Text("09:00 – 20:00 arası, senin seçtiğin aralıkla gelir",
+                    style: TextStyle(color: kMuted, fontSize: 10.5)),
+              ],
             ]),
           ),
         ),
