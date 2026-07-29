@@ -188,6 +188,16 @@ const kActivities = [
   ["Çok aktif (ağır iş / yoğun spor)", 1.9],
 ];
 
+const kQuotes = [
+  "Küçük adımlar, büyük değişimler yaratır 🌱",
+  "Bugün verdiğin karar, yarının aynası 💪",
+  "Hedefine her gün bir lokma daha yakınsın 🎯",
+  "Su iç, hareket et, kendine iyi bak 💧",
+  "Mükemmel olmana gerek yok, devam etmen yeter 🚀",
+  "Sağlıklı tabak = sağlıklı sen 🥗",
+  "Vazgeçmek yok, sadece yavaşlamak var 🐢",
+];
+
 const kRates = [
   ["Haftada 0,25 kg (yavaş ve kalıcı)", 0.25],
   ["Haftada 0,5 kg (önerilen)", 0.5],
@@ -254,7 +264,8 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomeState extends State<HomePage> {
-  Map<String, dynamic> state = {"profile": null, "days": <String, dynamic>{}};
+  Map<String, dynamic> state = {"profile": null, "days": <String, dynamic>{}, "recent": []};
+  bool onboardSeen = true;
   int tabIndex = 0;
   DateTime currentDay = DateTime.now();
   bool loaded = false;
@@ -351,9 +362,11 @@ class _HomeState extends State<HomePage> {
         if (data is Map<String, dynamic>) {
           state = data;
           state.putIfAbsent("days", () => <String, dynamic>{});
+          state.putIfAbsent("recent", () => []);
         }
       } catch (_) {}
     }
+    onboardSeen = prefs.getBool('onboard_seen') ?? false;
     if (state["profile"] != null) _fillProfileForm();
     setState(() {
       loaded = true;
@@ -388,6 +401,59 @@ class _HomeState extends State<HomePage> {
       (dd["meals"] as Map).putIfAbsent(m, () => []);
     }
     return dd;
+  }
+
+  // ---- son eklenen yiyecekler ----
+  List<String> get recentFoods =>
+      List<String>.from(state["recent"] as List? ?? []);
+
+  void _pushRecent(String ad) {
+    final r = recentFoods..remove(ad);
+    r.insert(0, ad);
+    state["recent"] = r.take(8).toList();
+  }
+
+  // ---- günlük seri (streak) ----
+  int calcStreak() {
+    bool hasFood(DateTime day) {
+      final dd = (state["days"] as Map)[_key(day)];
+      if (dd == null) return false;
+      final meals = dd["meals"] as Map?;
+      if (meals == null) return false;
+      for (var m in kMeals) {
+        if ((meals[m] as List? ?? []).isNotEmpty) return true;
+      }
+      return false;
+    }
+
+    int s = 0;
+    var d = DateTime.now();
+    if (!hasFood(d)) d = d.subtract(const Duration(days: 1));
+    while (hasFood(d)) {
+      s++;
+      d = d.subtract(const Duration(days: 1));
+    }
+    return s;
+  }
+
+  // ---- son 7 günün kalori toplamları ----
+  List<int> weekTotals() {
+    final out = <int>[];
+    for (int i = 6; i >= 0; i--) {
+      final d = DateTime.now().subtract(Duration(days: i));
+      final dd = (state["days"] as Map)[_key(d)];
+      int sum = 0;
+      if (dd != null) {
+        final meals = dd["meals"] as Map? ?? {};
+        for (var m in kMeals) {
+          for (var it in (meals[m] as List? ?? [])) {
+            sum += (it["kcal"] as num).toInt();
+          }
+        }
+      }
+      out.add(sum);
+    }
+    return out;
   }
 
   // ---- hesaplamalar (Mifflin-St Jeor) ----
@@ -436,10 +502,23 @@ class _HomeState extends State<HomePage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator(color: kAccent)));
     }
     final t = calcTargets();
+    if (!onboardSeen) return _buildOnboard();
+    final streak = calcStreak();
     return Scaffold(
       appBar: AppBar(
         title: const Text("🥗 Diyet Takip"),
         actions: [
+          if (streak > 0)
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE3F0E6),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text("🔥 $streak gün",
+                  style: const TextStyle(color: kGreen, fontWeight: FontWeight.bold)),
+            ),
           if (t != null)
             Container(
               margin: const EdgeInsets.only(right: 12),
@@ -487,6 +566,92 @@ class _HomeState extends State<HomePage> {
     );
   }
 
+  // ================= KARŞILAMA (İLK AÇILIŞ) =================
+  Widget _buildOnboard() {
+    final pages = [
+      ["🥗", "Hoş Geldin!", "Diyet Takip ile yediklerini kaydet,\nkalori hedefini bilimsel formülle öğren,\nsağlıklı kiloya ulaş."],
+      ["📊", "Her Şey Otomatik", "121 Türk yemeği kalorisiyle hazır.\nSu takibi, kilo grafiği, haftalık özet\nhepsi cebinde."],
+      ["📋", "Sana Özel Diyet Listesi", "Hedef kalorine göre günlük menü\notomatik oluşturulur. Tek tıkla güne uygula!"],
+    ];
+    int page = 0;
+    final controller = PageController();
+    return StatefulBuilder(builder: (ctx, setSB) {
+      return Scaffold(
+        backgroundColor: kBg,
+        body: SafeArea(
+          child: Column(children: [
+            Expanded(
+              child: PageView.builder(
+                controller: controller,
+                itemCount: pages.length,
+                onPageChanged: (i) => setSB(() => page = i),
+                itemBuilder: (_, i) => Padding(
+                  padding: const EdgeInsets.all(28),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(pages[i][0], style: const TextStyle(fontSize: 90)),
+                      const SizedBox(height: 24),
+                      Text(pages[i][1],
+                          style: const TextStyle(
+                              fontSize: 24, fontWeight: FontWeight.bold, color: kInk)),
+                      const SizedBox(height: 14),
+                      Text(pages[i][2],
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 15, color: kMuted, height: 1.5)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (int i = 0; i < pages.length; i++)
+                  Container(
+                    margin: const EdgeInsets.all(4),
+                    width: page == i ? 22 : 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: page == i ? kAccent : const Color(0xFFD8D0BF),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    if (page < pages.length - 1) {
+                      controller.nextPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOut);
+                    } else {
+                      final prefs = await SharedPreferences.getInstance();
+                      prefs.setBool('onboard_seen', true);
+                      setState(() {
+                        onboardSeen = true;
+                        tabIndex = 3;
+                      });
+                    }
+                  },
+                  child: Text(
+                    page < pages.length - 1 ? "İleri" : "Başlayalım 🚀",
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ),
+          ]),
+        ),
+      );
+    });
+  }
+
   // ================= BUGÜN (BESLENME) =================
   Widget _buildToday(Map<String, dynamic>? t) {
     final dd = dayData(currentDay);
@@ -528,6 +693,19 @@ class _HomeState extends State<HomePage> {
                     onPressed: () =>
                         setState(() => currentDay = currentDay.add(const Duration(days: 1)))),
               ],
+            ),
+          ),
+        ),
+
+        // motivasyon sözü
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              kQuotes[DateTime.now().day % kQuotes.length],
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontStyle: FontStyle.italic, color: Color(0xFF5A5347), fontSize: 13),
             ),
           ),
         ),
@@ -575,6 +753,26 @@ class _HomeState extends State<HomePage> {
             ]),
           ),
         ),
+
+        // haftalık kalori grafiği
+        if (t != null)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text("📊 Son 7 Gün",
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 120,
+                  width: double.infinity,
+                  child: CustomPaint(
+                    painter: CalorieWeekPainter(weekTotals(), t["target"] as int),
+                  ),
+                ),
+              ]),
+            ),
+          ),
 
         // su kartı
         Card(
@@ -735,11 +933,34 @@ class _HomeState extends State<HomePage> {
                 ),
                 const SizedBox(height: 8),
                 Expanded(
-                  child: ListView.builder(
-                    itemCount: results.length,
-                    itemBuilder: (_, i) {
-                      final f = results[i];
-                      return ListTile(
+                  child: ListView(children: [
+                    if (query.isEmpty && recentFoods.isNotEmpty) ...[
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 6),
+                        child: Text("⭐ Son eklediklerin",
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: kMuted)),
+                      ),
+                      for (var ad in recentFoods)
+                        ListTile(
+                          dense: true,
+                          leading: const Text("🕘", style: TextStyle(fontSize: 16)),
+                          title: Text(ad, style: const TextStyle(fontSize: 14)),
+                          trailing: Text("${foodKcal(ad)} kk",
+                              style: const TextStyle(
+                                  color: kAccent, fontWeight: FontWeight.bold)),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            _askPortion(meal,
+                                kFoods.firstWhere((f) => f[0] == ad));
+                          },
+                        ),
+                      const Divider(),
+                    ],
+                    for (var f in results)
+                      ListTile(
                         dense: true,
                         title: Text(f[0] as String, style: const TextStyle(fontSize: 14)),
                         subtitle: Text(f[1] as String,
@@ -751,9 +972,8 @@ class _HomeState extends State<HomePage> {
                           Navigator.pop(ctx);
                           _askPortion(meal, f);
                         },
-                      );
-                    },
-                  ),
+                      ),
+                  ]),
                 ),
               ]),
             ),
@@ -791,6 +1011,7 @@ class _HomeState extends State<HomePage> {
                   "por": por,
                   "kcal": ((f[2] as int) * por).round(),
                 });
+                _pushRecent(f[0] as String);
                 _save();
               });
               Navigator.pop(ctx);
@@ -1177,6 +1398,7 @@ class _HomeState extends State<HomePage> {
               }),
             ),
           ),
+        _buildBadges(),
         const Card(
           child: Padding(
             padding: EdgeInsets.all(14),
@@ -1231,6 +1453,78 @@ class _HomeState extends State<HomePage> {
     );
   }
 
+  // ================= ROZETLER =================
+  Widget _buildBadges() {
+    final daysMap = state["days"] as Map;
+    bool anyFood = false;
+    int totalWater = 0;
+    daysMap.forEach((_, dd) {
+      totalWater += ((dd["water"] ?? 0) as num).toInt();
+      final meals = dd["meals"] as Map? ?? {};
+      for (var m in kMeals) {
+        if ((meals[m] as List? ?? []).isNotEmpty) anyFood = true;
+      }
+    });
+    final streak = calcStreak();
+    final entries = _weightEntries();
+    double lost = 0;
+    if (entries.length >= 2) {
+      lost = entries.first.value - entries.last.value;
+    }
+
+    final badges = <List<Object>>[
+      ["🍽", "İlk Adım", "İlk yiyecek kaydını yaptın", anyFood],
+      ["🔥", "3 Günlük Seri", "3 gün üst üste kayıt", streak >= 3],
+      ["⚡", "Haftalık Seri", "7 gün üst üste kayıt", streak >= 7],
+      ["💧", "Su Dostu", "Toplam 50 bardak su", totalWater >= 50],
+      ["⚖", "Tartının Hakimi", "İlk kilo kaydını girdin", entries.isNotEmpty],
+      ["🏆", "5 Kilo Gitti!", "5 kg verdin", lost >= 5],
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text("🏅 Rozetlerin",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (var b in badges)
+                Opacity(
+                  opacity: b[3] as bool ? 1 : 0.35,
+                  child: Container(
+                    width: 105,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: (b[3] as bool)
+                          ? const Color(0xFFF7E8DD)
+                          : const Color(0xFFF2EFE8),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: kLine),
+                    ),
+                    child: Column(children: [
+                      Text(b[0] as String, style: const TextStyle(fontSize: 26)),
+                      const SizedBox(height: 4),
+                      Text(b[1] as String,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 11.5)),
+                      Text(b[2] as String,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: kMuted, fontSize: 9.5)),
+                    ]),
+                  ),
+                ),
+            ],
+          ),
+        ]),
+      ),
+    );
+  }
+
   void _saveProfile() {
     final age = int.tryParse(cAge.text) ?? 0;
     final height = double.tryParse(cHeight.text.replaceAll(",", ".")) ?? 0;
@@ -1259,6 +1553,64 @@ class _HomeState extends State<HomePage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text("Hesaplandı ✔ Günlük hedefin: ${t["target"]} kk — şimdi yediklerini ekle!")));
   }
+}
+
+// ================= HAFTALIK KALORİ GRAFİĞİ =================
+class CalorieWeekPainter extends CustomPainter {
+  final List<int> values;
+  final int target;
+  CalorieWeekPainter(this.values, this.target);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    double maxV = target.toDouble() * 1.25;
+    for (var v in values) {
+      if (v > maxV) maxV = v.toDouble();
+    }
+    if (maxV <= 0) maxV = 1;
+
+    const mb = 18.0, mt = 8.0;
+    final barW = (size.width - 20) / 7 * 0.55;
+    final goalPaint = Paint()
+      ..color = kGreen
+      ..strokeWidth = 1.5;
+    final textPainter = TextPainter(textDirection: TextDirection.ltr);
+
+    // hedef çizgisi
+    final yg = mt + (1 - target / maxV) * (size.height - mt - mb);
+    double dx = 0;
+    while (dx < size.width) {
+      canvas.drawLine(Offset(dx, yg), Offset(dx + 5, yg), goalPaint);
+      dx += 10;
+    }
+
+    for (int i = 0; i < 7; i++) {
+      final v = values[i];
+      final x = 10 + i * (size.width - 20) / 7 + ((size.width - 20) / 7 - barW) / 2;
+      final h = v / maxV * (size.height - mt - mb);
+      final over = v > target;
+      final paint = Paint()
+        ..color = v == 0
+            ? const Color(0xFFEEE7D9)
+            : (over ? kRed : (v >= target * 0.8 ? kGreen : kAccent));
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTWH(x, size.height - mb - h, barW, h),
+            const Radius.circular(4)),
+        paint,
+      );
+      final day = DateTime.now().subtract(Duration(days: 6 - i));
+      textPainter.text = TextSpan(
+          text: kGunler[day.weekday - 1],
+          style: const TextStyle(color: kMuted, fontSize: 9));
+      textPainter.layout();
+      textPainter.paint(
+          canvas, Offset(x + barW / 2 - textPainter.width / 2, size.height - mb + 4));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CalorieWeekPainter old) => true;
 }
 
 // ================= KİLO GRAFİĞİ =================
