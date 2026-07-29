@@ -34,6 +34,9 @@ Future<void> scheduleReminders(bool enabled, {int waterHours = 3}) async {
     final androidImpl = notifPlugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await androidImpl?.requestNotificationsPermission();
+    try {
+      await androidImpl?.requestExactAlarmsPermission();
+    } catch (_) {}
     const details = NotificationDetails(
       android: AndroidNotificationDetails('hatirlatma', 'Hatırlatmalar',
           importance: Importance.high, priority: Priority.high),
@@ -42,11 +45,22 @@ Future<void> scheduleReminders(bool enabled, {int waterHours = 3}) async {
       final now = tz.TZDateTime.now(tz.local);
       var t = tz.TZDateTime(tz.local, now.year, now.month, now.day, h, m);
       if (t.isBefore(now)) t = t.add(const Duration(days: 1));
-      await notifPlugin.zonedSchedule(id, title, body, t, details,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          matchDateTimeComponents: DateTimeComponents.time);
+      try {
+        await notifPlugin.zonedSchedule(id, title, body, t, details,
+            uiLocalNotificationDateInterpretation:
+                UILocalNotificationDateInterpretation.absoluteTime,
+            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+            matchDateTimeComponents: DateTimeComponents.time);
+      } catch (_) {
+        // tam alarm izni yoksa yaklaşık moda geç (yine de bildirir)
+        try {
+          await notifPlugin.zonedSchedule(id, title, body, t, details,
+              uiLocalNotificationDateInterpretation:
+                  UILocalNotificationDateInterpretation.absoluteTime,
+              androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+              matchDateTimeComponents: DateTimeComponents.time);
+        } catch (_) {}
+      }
     }
 
     await daily(1, 8, 0, "🍳 Kahvaltı zamanı!",
@@ -1759,6 +1773,31 @@ class _HomeState extends State<HomePage> {
                 ]),
                 const Text("09:00 – 20:00 arası, senin seçtiğin aralıkla gelir",
                     style: TextStyle(color: kMuted, fontSize: 10.5)),
+                const SizedBox(height: 6),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    try {
+                      await notifPlugin.show(
+                        999,
+                        "🔔 Test bildirimi",
+                        "Bildirimler çalışıyor, her şey yolunda! 💪",
+                        const NotificationDetails(
+                          android: AndroidNotificationDetails(
+                              'hatirlatma', 'Hatırlatmalar',
+                              importance: Importance.high,
+                              priority: Priority.high),
+                        ),
+                      );
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text("Bildirim hatası: $e")));
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.notifications_active, size: 18),
+                  label: const Text("Test bildirimi gönder"),
+                ),
               ],
             ]),
           ),
