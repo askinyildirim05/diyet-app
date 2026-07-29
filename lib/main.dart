@@ -485,12 +485,6 @@ class _HomeState extends State<HomePage> {
     return dd;
   }
 
-  // ---- Türkçe uyumlu arama (I/ı, İ/i sorunu) ----
-  String trLower(String s) => s
-      .replaceAll('I', 'ı')
-      .replaceAll('İ', 'i')
-      .toLowerCase();
-
   // ---- yiyecek ekleme (hata olursa kullanıcıya göster) ----
   void addFood(String meal, String ad, double por) {
     try {
@@ -1282,7 +1276,7 @@ class _HomeState extends State<HomePage> {
     );
   }
 
-  // ---- yiyecek seçme penceresi (tek pencere, 2 adım: seç → porsiyon) ----
+  // ---- yiyecek seçme penceresi ----
   void _showFoodPicker(String meal) {
     showModalBottomSheet(
       context: context,
@@ -1290,175 +1284,14 @@ class _HomeState extends State<HomePage> {
       backgroundColor: kCard,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
-      builder: (sheetCtx) {
-        String query = "";
-        List? picked; // seçilen yiyecek [ad, porsiyon, kcal]
-        final cPortion = TextEditingController(text: "1");
-        return StatefulBuilder(builder: (ctx, setSheet) {
-          final results = kFoods
-              .where((f) => trLower(f[0] as String).contains(trLower(query)))
-              .toList();
-          return Padding(
-            padding: EdgeInsets.only(
-              left: 16, right: 16, top: 16,
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-            ),
-            child: SizedBox(
-              height: MediaQuery.of(ctx).size.height * 0.75,
-              child: picked == null
-                  ? Column(children: [
-                      Text("${kMealIcons[meal]} $meal — Yiyecek Seç",
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 16)),
-                      const SizedBox(height: 10),
-                      TextField(
-                        autofocus: true,
-                        decoration: InputDecoration(
-                          hintText: "Ara... (örn: tavuk, simit, elma)",
-                          prefixIcon: const Icon(Icons.search),
-                          filled: true,
-                          fillColor: kBg,
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none),
-                        ),
-                        onChanged: (v) => setSheet(() => query = v),
-                      ),
-                      const SizedBox(height: 8),
-                      Expanded(
-                        child: ListView(children: [
-                          if (query.isEmpty && recentFoods.isNotEmpty) ...[
-                            const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 6),
-                              child: Text("⭐ Son eklediklerin",
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                      color: kMuted)),
-                            ),
-                            for (var ad in recentFoods)
-                              ListTile(
-                                dense: true,
-                                leading: const Text("🕘",
-                                    style: TextStyle(fontSize: 16)),
-                                title: Text(ad,
-                                    style: const TextStyle(fontSize: 14)),
-                                trailing: Text("${foodKcal(ad)} kk",
-                                    style: const TextStyle(
-                                        color: kAccent,
-                                        fontWeight: FontWeight.bold)),
-                                onTap: () => setSheet(() => picked = kFoods
-                                    .firstWhere((f) => f[0] == ad)),
-                              ),
-                            const Divider(),
-                          ],
-                          if (results.isEmpty)
-                            const Padding(
-                              padding: EdgeInsets.all(24),
-                              child: Text("Sonuç bulunamadı 🔍",
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(color: kMuted)),
-                            ),
-                          for (var f in results)
-                            ListTile(
-                              dense: true,
-                              title: Text(f[0] as String,
-                                  style: const TextStyle(fontSize: 14)),
-                              subtitle: Text(f[1] as String,
-                                  style: const TextStyle(
-                                      fontSize: 12, color: kMuted)),
-                              trailing: Text("${f[2]} kk",
-                                  style: const TextStyle(
-                                      color: kAccent,
-                                      fontWeight: FontWeight.bold)),
-                              onTap: () => setSheet(() => picked = f),
-                            ),
-                        ]),
-                      ),
-                    ])
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(children: [
-                          IconButton(
-                            icon: const Icon(Icons.arrow_back),
-                            onPressed: () => setSheet(() => picked = null),
-                          ),
-                          Expanded(
-                            child: Text(picked![0] as String,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16)),
-                          ),
-                        ]),
-                        const SizedBox(height: 6),
-                        Text("1 porsiyon = ${picked![1]} · ${picked![2]} kk",
-                            style: const TextStyle(color: kMuted, fontSize: 13)),
-                        const SizedBox(height: 16),
-                        const Text("Kaç porsiyon yedin?",
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 14)),
-                        const SizedBox(height: 8),
-                        Wrap(spacing: 8, children: [
-                          for (var p in ["0.5", "1", "1.5", "2", "3"])
-                            ChoiceChip(
-                              label: Text(p),
-                              selected: cPortion.text == p,
-                              selectedColor: const Color(0xFFF7E8DD),
-                              onSelected: (_) =>
-                                  setSheet(() => cPortion.text = p),
-                            ),
-                        ]),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: cPortion,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          decoration: InputDecoration(
-                            labelText: "veya elle yaz (${picked![1]})",
-                            border: const OutlineInputBorder(),
-                          ),
-                          onChanged: (_) => setSheet(() {}),
-                        ),
-                        const SizedBox(height: 12),
-                        Builder(builder: (_) {
-                          final por = double.tryParse(
-                                  cPortion.text.replaceAll(",", ".")) ??
-                              0;
-                          final kk = ((picked![2] as int) * por).round();
-                          return Text("Toplam: $kk kalori",
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15,
-                                  color: kAccent));
-                        }),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: 50,
-                          child: ElevatedButton.icon(
-                            icon: const Icon(Icons.check),
-                            label: const Text("Ekle",
-                                style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold)),
-                            onPressed: () {
-                              final por = double.tryParse(cPortion.text
-                                      .replaceAll(",", ".")) ??
-                                  0;
-                              if (por <= 0) return;
-                              final ad = picked![0] as String;
-                              Navigator.pop(sheetCtx);
-                              addFood(meal, ad, por);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
-          );
-        });
-      },
+      builder: (sheetCtx) => FoodPickerSheet(
+        meal: meal,
+        recent: recentFoods,
+        onAdd: (ad, por) {
+          Navigator.pop(sheetCtx);
+          addFood(meal, ad, por);
+        },
+      ),
     );
   }
 
@@ -2268,4 +2101,189 @@ class WeightChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant WeightChartPainter old) => true;
+}
+
+// ================= TÜRKÇE UYUMLU ARAMA =================
+String trLower(String s) =>
+    s.replaceAll('I', 'ı').replaceAll('İ', 'i').toLowerCase();
+
+// ================= YİYECEK SEÇME PENCERESİ (KALICI) =================
+class FoodPickerSheet extends StatefulWidget {
+  final String meal;
+  final List<String> recent;
+  final void Function(String ad, double por) onAdd;
+  const FoodPickerSheet(
+      {super.key,
+      required this.meal,
+      required this.recent,
+      required this.onAdd});
+
+  @override
+  State<FoodPickerSheet> createState() => _FoodPickerSheetState();
+}
+
+class _FoodPickerSheetState extends State<FoodPickerSheet> {
+  String query = "";
+  List? picked; // seçilen yiyecek [ad, porsiyon, kcal]
+  final cPortion = TextEditingController(text: "1");
+
+  @override
+  void dispose() {
+    cPortion.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final results = kFoods
+        .where((f) => trLower(f[0] as String).contains(trLower(query)))
+        .toList();
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16, right: 16, top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.75,
+        child: picked == null ? _buildList() : _buildPortion(),
+      ),
+    );
+  }
+
+  Widget _buildList() {
+    return Column(children: [
+      Text("${kMealIcons[widget.meal]} ${widget.meal} — Yiyecek Seç",
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+      const SizedBox(height: 10),
+      TextField(
+        autofocus: true,
+        decoration: InputDecoration(
+          hintText: "Ara... (örn: tavuk, simit, elma)",
+          prefixIcon: const Icon(Icons.search),
+          filled: true,
+          fillColor: kBg,
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none),
+        ),
+        onChanged: (v) => setState(() => query = v),
+      ),
+      const SizedBox(height: 8),
+      Expanded(
+        child: ListView(children: [
+          if (query.isEmpty && widget.recent.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 6),
+              child: Text("⭐ Son eklediklerin",
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: kMuted)),
+            ),
+            for (var ad in widget.recent)
+              ListTile(
+                dense: true,
+                leading: const Text("🕘", style: TextStyle(fontSize: 16)),
+                title: Text(ad, style: const TextStyle(fontSize: 14)),
+                trailing: Text("${foodKcal(ad)} kk",
+                    style: const TextStyle(
+                        color: kAccent, fontWeight: FontWeight.bold)),
+                onTap: () => setState(
+                    () => picked = kFoods.firstWhere((f) => f[0] == ad)),
+              ),
+            const Divider(),
+          ],
+          if (results.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text("Sonuç bulunamadı 🔍",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: kMuted)),
+            ),
+          for (var f in results)
+            ListTile(
+              dense: true,
+              title: Text(f[0] as String,
+                  style: const TextStyle(fontSize: 14)),
+              subtitle: Text(f[1] as String,
+                  style: const TextStyle(fontSize: 12, color: kMuted)),
+              trailing: Text("${f[2]} kk",
+                  style: const TextStyle(
+                      color: kAccent, fontWeight: FontWeight.bold)),
+              onTap: () => setState(() => picked = f),
+            ),
+        ]),
+      ),
+    ]);
+  }
+
+  Widget _buildPortion() {
+    final p = picked!;
+    final por = double.tryParse(cPortion.text.replaceAll(",", ".")) ?? 0;
+    final kk = ((p[2] as int) * por).round();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => setState(() => picked = null),
+          ),
+          Expanded(
+            child: Text(p[0] as String,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 16)),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        Text("1 porsiyon = ${p[1]} · ${p[2]} kk",
+            style: const TextStyle(color: kMuted, fontSize: 13)),
+        const SizedBox(height: 16),
+        const Text("Kaç porsiyon yedin?",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, children: [
+          for (var ps in ["0.5", "1", "1.5", "2", "3"])
+            ChoiceChip(
+              label: Text(ps),
+              selected: cPortion.text == ps,
+              selectedColor: const Color(0xFFF7E8DD),
+              onSelected: (_) => setState(() => cPortion.text = ps),
+            ),
+        ]),
+        const SizedBox(height: 10),
+        TextField(
+          controller: cPortion,
+          keyboardType:
+              const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: "veya elle yaz (${p[1]})",
+            border: const OutlineInputBorder(),
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 12),
+        Text("Toplam: $kk kalori",
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+                color: kAccent)),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 50,
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.check),
+            label: const Text("Ekle",
+                style: TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.bold)),
+            onPressed: () {
+              if (por <= 0) return;
+              widget.onAdd(p[0] as String, por);
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }
