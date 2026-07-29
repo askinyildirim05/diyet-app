@@ -931,20 +931,23 @@ class _HomeState extends State<HomePage> {
                           const Icon(Icons.calendar_month,
                               size: 16, color: kAccent),
                           const SizedBox(width: 5),
-                          Text(fmtDate(currentDay),
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 15)),
+                          Flexible(
+                            child: Text(fmtDate(currentDay),
+                                textAlign: TextAlign.center,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 15)),
+                          ),
                         ]),
-                        Text(isToday ? "Bugün" : "Ay görünümü için dokun",
+                        Text(
+                            isToday
+                                ? "Bugün · takvim için dokun"
+                                : "Takvim için dokun",
                             style: const TextStyle(color: kMuted, fontSize: 11)),
                       ]),
                     ),
                   ),
                 ),
-                TextButton(
-                    onPressed: () => setState(() => currentDay = DateTime.now()),
-                    child: const Text("Bugün")),
                 IconButton(
                     icon: const Icon(Icons.chevron_right),
                     onPressed: () =>
