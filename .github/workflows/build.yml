@@ -32,7 +32,7 @@ jobs:
           grep -n "isMinifyEnabled" android/app/build.gradle.kts
       - name: AdMob, izin ve uygulama adini manifeste gom
         run: |
-          sed -i 's|apk/res/android">|apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>\n    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>|' android/app/src/main/AndroidManifest.xml
+          sed -i 's|apk/res/android">|apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>\n|' android/app/src/main/AndroidManifest.xml
           sed -i 's|</application>|    <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-5113050441647801~5970291753"/>\n    </application>|' android/app/src/main/AndroidManifest.xml
           sed -i 's|android:label="diyet_takip"|android:label="Diyet Takip"|' android/app/src/main/AndroidManifest.xml
       - run: flutter pub get
