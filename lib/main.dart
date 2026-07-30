@@ -51,7 +51,7 @@ Future<int> scheduleReminders(bool enabled, {int waterMinutes = 180}) async {
         await notifPlugin.zonedSchedule(id, title, body, t, details,
             uiLocalNotificationDateInterpretation:
                 UILocalNotificationDateInterpretation.absoluteTime,
-            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+            androidScheduleMode: AndroidScheduleMode.alarmClock,
             matchDateTimeComponents: DateTimeComponents.time);
       } catch (_) {
         // tam alarm izni yoksa yaklaşık moda geç (yine de bildirir)
@@ -1893,7 +1893,7 @@ class _HomeState extends State<HomePage> {
                                 UILocalNotificationDateInterpretation
                                     .absoluteTime,
                             androidScheduleMode:
-                                AndroidScheduleMode.exactAllowWhileIdle);
+                                AndroidScheduleMode.alarmClock);
                       } catch (_) {
                         await notifPlugin.zonedSchedule(
                             998,
