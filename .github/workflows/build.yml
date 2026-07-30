@@ -28,14 +28,22 @@ jobs:
           printf '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n' >> android/app/build.gradle.kts
       - name: AdMob, izin ve uygulama adini manifeste gom
         run: |
-          sed -i 's|apk/res/android">|apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>\n    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>|' android/app/src/main/AndroidManifest.xml
+          sed -i 's|apk/res/android">|apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>\n    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>|' android/app/src/main/AndroidManifest.xml
           sed -i 's|</application>|    <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-5113050441647801~5970291753"/>\n    </application>|' android/app/src/main/AndroidManifest.xml
           sed -i 's|android:label="diyet_takip"|android:label="Diyet Takip"|' android/app/src/main/AndroidManifest.xml
       - run: flutter pub get
+      - name: Yuklenen bildirim paketi surumunu goster
+        run: grep -A2 'flutter_local_notifications' pubspec.lock | head -5
       - name: Ikonlari uret
         run: dart run flutter_launcher_icons
       - run: flutter build apk --release
+      - name: Play Store icin AAB uret
+        run: flutter build appbundle --release
       - uses: actions/upload-artifact@v4
         with:
           name: DiyetTakip-APK
           path: build/app/outputs/flutter-apk/app-release.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DiyetTakip-AAB
+          path: build/app/outputs/bundle/release/app-release.aab
