@@ -30,6 +30,12 @@ jobs:
         run: |
           sed -i 's|release {|release {\n            isMinifyEnabled = false\n            isShrinkResources = false|' android/app/build.gradle.kts
           grep -n "isMinifyEnabled" android/app/build.gradle.kts
+      - name: Yayin imzasi yapilandir (Play Store icin)
+        run: |
+          cp upload-keystore.jks android/app/upload-keystore.jks
+          sed -i 's|buildTypes {|signingConfigs {\n        create("release") {\n            keyAlias = "upload"\n            keyPassword = "DiyetTakip2026"\n            storeFile = file("upload-keystore.jks")\n            storePassword = "DiyetTakip2026"\n        }\n    }\n    buildTypes {|' android/app/build.gradle.kts
+          sed -i 's|signingConfig = signingConfigs.getByName("debug")|signingConfig = signingConfigs.getByName("release")|' android/app/build.gradle.kts
+          grep -n "signingConfig" android/app/build.gradle.kts
       - name: AdMob, izin ve uygulama adini manifeste gom
         run: |
           sed -i 's|apk/res/android">|apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>\n|' android/app/src/main/AndroidManifest.xml
