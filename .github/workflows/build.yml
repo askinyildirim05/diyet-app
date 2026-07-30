@@ -26,6 +26,10 @@ jobs:
         run: |
           sed -i 's|compileOptions {|compileOptions {\n        isCoreLibraryDesugaringEnabled = true|' android/app/build.gradle.kts
           printf '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n' >> android/app/build.gradle.kts
+      - name: R8 kod sikistirmayi kapat (bildirim kayit hatasi icin)
+        run: |
+          sed -i 's|release {|release {\n            isMinifyEnabled = false\n            isShrinkResources = false|' android/app/build.gradle.kts
+          grep -n "isMinifyEnabled" android/app/build.gradle.kts
       - name: AdMob, izin ve uygulama adini manifeste gom
         run: |
           sed -i 's|apk/res/android">|apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>\n    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>|' android/app/src/main/AndroidManifest.xml
