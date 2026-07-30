@@ -5,6 +5,8 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1865,28 +1867,54 @@ class _HomeState extends State<HomePage> {
                 OutlinedButton.icon(
                   onPressed: () async {
                     try {
+                      final androidImpl = notifPlugin
+                          .resolvePlatformSpecificImplementation<
+                              AndroidFlutterLocalNotificationsPlugin>();
+                      await androidImpl?.requestNotificationsPermission();
+                      try {
+                        await androidImpl?.requestExactAlarmsPermission();
+                      } catch (_) {}
                       final t = tz.TZDateTime.now(tz.local)
                           .add(const Duration(minutes: 2));
-                      await notifPlugin.zonedSchedule(
-                        998,
-                        "⏰ Zamanlanmış test",
-                        "Bunu görüyorsan zamanlanmış bildirimler çalışıyor! 🎉",
-                        t,
-                        const NotificationDetails(
-                          android: AndroidNotificationDetails(
-                              'hatirlatma', 'Hatırlatmalar',
-                              importance: Importance.high,
-                              priority: Priority.high),
-                        ),
-                        uiLocalNotificationDateInterpretation:
-                            UILocalNotificationDateInterpretation.absoluteTime,
-                        androidScheduleMode:
-                            AndroidScheduleMode.inexactAllowWhileIdle,
+                      const det = NotificationDetails(
+                        android: AndroidNotificationDetails(
+                            'hatirlatma', 'Hatırlatmalar',
+                            importance: Importance.high,
+                            priority: Priority.high),
                       );
+                      try {
+                        await notifPlugin.zonedSchedule(
+                            998,
+                            "⏰ Zamanlanmış test",
+                            "Bunu görüyorsan zamanlanmış bildirimler çalışıyor! 🎉",
+                            t,
+                            det,
+                            uiLocalNotificationDateInterpretation:
+                                UILocalNotificationDateInterpretation
+                                    .absoluteTime,
+                            androidScheduleMode:
+                                AndroidScheduleMode.exactAllowWhileIdle);
+                      } catch (_) {
+                        await notifPlugin.zonedSchedule(
+                            998,
+                            "⏰ Zamanlanmış test",
+                            "Bunu görüyorsan zamanlanmış bildirimler çalışıyor! 🎉",
+                            t,
+                            det,
+                            uiLocalNotificationDateInterpretation:
+                                UILocalNotificationDateInterpretation
+                                    .absoluteTime,
+                            androidScheduleMode:
+                                AndroidScheduleMode.inexactAllowWhileIdle);
+                      }
+                      final bekleyen =
+                          await notifPlugin.pendingNotificationRequests();
                       if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                            content: Text(
-                                "Kuruldu! 2 dakika içinde bildirim gelecek — bekle ve gör ⏳")));
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            duration: const Duration(seconds: 4),
+                            content: Text(bekleyen.isEmpty
+                                ? "⚠ Bildirim kurulamadı — telefon izinlerini kontrol et"
+                                : "✔ ${bekleyen.length} bildirim sırada. 2 dk bekle — ekranı açık tut!")));
                       }
                     } catch (e) {
                       if (mounted) {
@@ -1922,6 +1950,76 @@ class _HomeState extends State<HomePage> {
                   },
                   icon: const Icon(Icons.notifications_active, size: 18),
                   label: const Text("Test bildirimi gönder"),
+                ),
+                const SizedBox(height: 6),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    try {
+                      final info = await PackageInfo.fromPlatform();
+                      final intent = AndroidIntent(
+                        action:
+                            'android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
+                        data: 'package:${info.packageName}',
+                      );
+                      await intent.launch();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            duration: Duration(seconds: 4),
+                            content: Text(
+                                "Açılan ekranda İZİN VER'e bas — böylece telefon bildirimleri engelleyemez")));
+                      }
+                    } catch (_) {
+                      try {
+                        const intent = AndroidIntent(
+                            action:
+                                'android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS');
+                        await intent.launch();
+                      } catch (e2) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text("Açılamadı: $e2")));
+                        }
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.battery_saver, size: 18),
+                  label: const Text("🔋 Pil kısıtlamasını kaldır (ÖNEMLİ)"),
+                ),
+                const SizedBox(height: 6),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    try {
+                      final info = await PackageInfo.fromPlatform();
+                      try {
+                        final intent = AndroidIntent(
+                          action: 'android.intent.action.MAIN',
+                          package: 'com.coloros.safecenter',
+                          componentName:
+                              'com.coloros.safecenter.permission.startup.StartupAppListActivity',
+                        );
+                        await intent.launch();
+                      } catch (_) {
+                        final intent = AndroidIntent(
+                          action: 'android.settings.APPLICATION_DETAILS_SETTINGS',
+                          data: 'package:${info.packageName}',
+                        );
+                        await intent.launch();
+                      }
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            duration: Duration(seconds: 5),
+                            content: Text(
+                                "Diyet Takip'i bul ve OTOMATİK BAŞLATMA'yı aç — OPPO için şart!")));
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text("Açılamadı: $e")));
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.rocket_launch_outlined, size: 18),
+                  label: const Text("🚀 Otomatik başlatmayı aç (OPPO)"),
                 ),
               ],
             ]),
