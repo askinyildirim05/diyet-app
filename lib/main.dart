@@ -27,10 +27,10 @@ Future<void> initNotifications() async {
   } catch (_) {}
 }
 
-Future<void> scheduleReminders(bool enabled, {int waterHours = 3}) async {
+Future<int> scheduleReminders(bool enabled, {int waterMinutes = 180}) async {
   try {
     await notifPlugin.cancelAll();
-    if (!enabled) return;
+    if (!enabled) return 0;
     final androidImpl = notifPlugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await androidImpl?.requestNotificationsPermission();
@@ -71,18 +71,23 @@ Future<void> scheduleReminders(bool enabled, {int waterHours = 3}) async {
         "Hafif bir akşam yemeği hedefe hızlı götürür");
     await daily(7, 21, 0, "📝 Günü kapat",
         "Bugünkü öğünlerini ve kilonu kaydettin mi?");
-    // su hatırlatmaları: 09:00 - 21:00 arası, kullanıcının seçtiği aralıkla
-    if (waterHours > 0) {
+    // su hatırlatmaları: 08:00 - 22:00 arası, kullanıcının seçtiği aralıkla
+    if (waterMinutes > 0) {
       int id = 100;
-      int h = 9;
-      while (h <= 20) {
-        await daily(id, h, 0, "💧 Su zamanı!",
+      int t = 8 * 60;
+      while (t <= 22 * 60 && id < 125) {
+        await daily(id, t ~/ 60, t % 60, "💧 Su zamanı!",
             "Bir bardak su iç — hedefe birlikte ulaşalım");
         id++;
-        h += waterHours;
+        t += waterMinutes;
       }
     }
-  } catch (_) {}
+    // kaç bildirim kuruldu? (teşhis için)
+    final pending = await notifPlugin.pendingNotificationRequests();
+    return pending.length;
+  } catch (_) {
+    return -1;
+  }
 }
 
 // ================= REKLAM KİMLİKLERİ =================
@@ -360,6 +365,8 @@ class _HomeState extends State<HomePage> {
   int pRate = 1;
 
   final cWeightEntry = TextEditingController();
+  final cWaterGap = TextEditingController(text: "3");
+  String waterGapUnit = "saat";
 
   @override
   void initState() {
@@ -428,6 +435,7 @@ class _HomeState extends State<HomePage> {
     cWeight.dispose();
     cTargetW.dispose();
     cWeightEntry.dispose();
+    cWaterGap.dispose();
     super.dispose();
   }
 
@@ -446,9 +454,22 @@ class _HomeState extends State<HomePage> {
     }
     onboardSeen = prefs.getBool('onboard_seen') ?? false;
     notifOn = state["notif"] == true;
+    // eski saat ayarını dakikaya çevir
+    if (state["water_notif_min"] == null) {
+      state["water_notif_min"] =
+          ((state["water_notif_h"] as num? ?? 3).toInt()) * 60;
+    }
+    final wm = (state["water_notif_min"] as num? ?? 180).toInt();
+    if (wm > 0 && wm % 60 == 0) {
+      waterGapUnit = "saat";
+      cWaterGap.text = "${wm ~/ 60}";
+    } else if (wm > 0) {
+      waterGapUnit = "dk";
+      cWaterGap.text = "$wm";
+    }
     if (notifOn) {
       scheduleReminders(true,
-          waterHours: (state["water_notif_h"] as num? ?? 3).toInt());
+          waterMinutes: (state["water_notif_min"] as num? ?? 180).toInt());
     }
     if (state["profile"] != null) _fillProfileForm();
     setState(() {
@@ -1726,8 +1747,8 @@ class _HomeState extends State<HomePage> {
                   state["notif"] = v;
                   _save();
                   await scheduleReminders(v,
-                      waterHours:
-                          (state["water_notif_h"] as num? ?? 3).toInt());
+                      waterMinutes:
+                          (state["water_notif_min"] as num? ?? 180).toInt());
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                         content: Text(v
@@ -1749,30 +1770,134 @@ class _HomeState extends State<HomePage> {
                 const Text("💧 Su hatırlatması ne sıklıkta gelsin?",
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                 const SizedBox(height: 6),
-                Wrap(spacing: 6, children: [
-                  for (var opt in [
-                    [1, "1 saatte bir"],
-                    [2, "2 saatte bir"],
-                    [3, "3 saatte bir"],
-                    [0, "Kapalı"]
-                  ])
-                    ChoiceChip(
-                      label: Text(opt[1] as String,
-                          style: const TextStyle(fontSize: 12)),
-                      selected:
-                          (state["water_notif_h"] as num? ?? 3).toInt() ==
-                              opt[0],
-                      selectedColor: const Color(0xFFE7F0F6),
-                      onSelected: (_) async {
-                        setState(() => state["water_notif_h"] = opt[0]);
-                        _save();
-                        await scheduleReminders(true,
-                            waterHours: opt[0] as int);
-                      },
+                Builder(builder: (_) {
+                  final curMin =
+                      (state["water_notif_min"] as num? ?? 180).toInt();
+                  return Row(children: [
+                    SizedBox(
+                      width: 80,
+                      child: TextField(
+                        controller: cWaterGap,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                          labelText: "Sıklık",
+                        ),
+                      ),
                     ),
-                ]),
-                const Text("09:00 – 20:00 arası, senin seçtiğin aralıkla gelir",
-                    style: TextStyle(color: kMuted, fontSize: 10.5)),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: const Text("dakika", style: TextStyle(fontSize: 12)),
+                      selected: waterGapUnit == "dk",
+                      selectedColor: const Color(0xFFE7F0F6),
+                      onSelected: (_) =>
+                          setState(() => waterGapUnit = "dk"),
+                    ),
+                    const SizedBox(width: 6),
+                    ChoiceChip(
+                      label: const Text("saat", style: TextStyle(fontSize: 12)),
+                      selected: waterGapUnit == "saat",
+                      selectedColor: const Color(0xFFE7F0F6),
+                      onSelected: (_) =>
+                          setState(() => waterGapUnit = "saat"),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () async {
+                        var v = int.tryParse(cWaterGap.text) ?? 0;
+                        if (waterGapUnit == "saat") v *= 60;
+                        if (v < 15) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text("En az 15 dakika olmalı")));
+                          return;
+                        }
+                        setState(() => state["water_notif_min"] = v);
+                        _save();
+                        final n = await scheduleReminders(true,
+                            waterMinutes: v);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                              content: Text(n >= 0
+                                  ? "✔ $n bildirim kuruldu (su: her $v dk, 08:00-22:00)"
+                                  : "⚠ Bildirimler kurulamadı — telefon ayarlarından izinleri kontrol et")));
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 10)),
+                      child: Text(curMin > 0 ? "Ayarla" : "Aç"),
+                    ),
+                    const SizedBox(width: 6),
+                    if (curMin > 0)
+                      IconButton(
+                        icon: const Icon(Icons.notifications_off_outlined,
+                            color: kMuted),
+                        tooltip: "Su bildirimini kapat",
+                        onPressed: () async {
+                          setState(() => state["water_notif_min"] = 0);
+                          _save();
+                          final n =
+                              await scheduleReminders(true, waterMinutes: 0);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                content: Text(
+                                    "🔕 Su bildirimleri kapandı ($n yemek bildirimi açık)")));
+                          }
+                        },
+                      ),
+                  ]);
+                }),
+                const SizedBox(height: 4),
+                Builder(builder: (_) {
+                  final wm2 =
+                      (state["water_notif_min"] as num? ?? 180).toInt();
+                  final txt = wm2 <= 0
+                      ? "kapalı"
+                      : (wm2 >= 60
+                          ? "her ${(wm2 / 60).toStringAsFixed(wm2 % 60 == 0 ? 0 : 1)} saatte bir"
+                          : "her $wm2 dakikada bir");
+                  return Text("08:00 – 22:00 arası gelir (şu an: $txt)",
+                      style: const TextStyle(color: kMuted, fontSize: 10.5));
+                }),
+                const SizedBox(height: 6),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    try {
+                      final t = tz.TZDateTime.now(tz.local)
+                          .add(const Duration(minutes: 2));
+                      await notifPlugin.zonedSchedule(
+                        998,
+                        "⏰ Zamanlanmış test",
+                        "Bunu görüyorsan zamanlanmış bildirimler çalışıyor! 🎉",
+                        t,
+                        const NotificationDetails(
+                          android: AndroidNotificationDetails(
+                              'hatirlatma', 'Hatırlatmalar',
+                              importance: Importance.high,
+                              priority: Priority.high),
+                        ),
+                        uiLocalNotificationDateInterpretation:
+                            UILocalNotificationDateInterpretation.absoluteTime,
+                        androidScheduleMode:
+                            AndroidScheduleMode.inexactAllowWhileIdle,
+                      );
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text(
+                                "Kuruldu! 2 dakika içinde bildirim gelecek — bekle ve gör ⏳")));
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text("Kurulamadı: $e")));
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.timer_outlined, size: 18),
+                  label: const Text("2 dk sonra test bildirimi kur"),
+                ),
                 const SizedBox(height: 6),
                 OutlinedButton.icon(
                   onPressed: () async {
