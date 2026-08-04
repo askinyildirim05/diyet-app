@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -232,35 +233,90 @@ const kFoods = [
   ["Helva (tahin)", "1 dilim", 230],
 ];
 
-const kMeals = ["Sabah", "Öğle", "Akşam", "Ara Öğün"];
-const kMealIcons = {"Sabah": "🌅", "Öğle": "☀️", "Akşam": "🌙", "Ara Öğün": "🍎"};
-const kMealFrac = {"Sabah": 0.25, "Öğle": 0.35, "Akşam": 0.30, "Ara Öğün": 0.10};
+const kMeals = ["Sabah", "Öğle", "Akşam", "Ara Öğün 1", "Ara Öğün 2", "Ara Öğün 3"];
+const kMealIcons = {
+  "Sabah": "🌅", "Öğle": "☀️", "Akşam": "🌙",
+  "Ara Öğün 1": "🍎", "Ara Öğün 2": "🌰", "Ara Öğün 3": "🥛"
+};
+const kMealFrac = {
+  "Sabah": 0.25, "Öğle": 0.32, "Akşam": 0.27,
+  "Ara Öğün 1": 0.06, "Ara Öğün 2": 0.05, "Ara Öğün 3": 0.05
+};
 
+// Akilli planlayici: yemekler KATEGORILI — bir ogunde ayni kategoriden 2 urun olmaz
+// (orn. iki ekmek yan yana gelmez). Her ogun sablonu dengeli tabak kuralina gore kurulur.
 const kPlanPools = {
   "Sabah": [
-    "Yumurta (haşlanmış/sahanda)", "Omlet (2 yumurta)", "Beyaz peynir",
-    "Lor peyniri", "Zeytin", "Tam buğday ekmeği", "Çavdar ekmeği",
-    "Domates", "Salatalık", "Yulaf (sütlü)", "Süt", "Çay (şekersiz)"
+    ["Yumurta (haşlanmış/sahanda)", "protein"], ["Omlet (2 yumurta)", "protein"],
+    ["Menemen", "protein"], ["Sucuklu yumurta", "protein"],
+    ["Beyaz peynir", "peynir"], ["Kaşar peyniri", "peynir"], ["Lor peyniri", "peynir"],
+    ["Zeytin", "yan"], ["Domates", "yan"], ["Salatalık", "yan"],
+    ["Tam buğday ekmeği", "tahil"], ["Çavdar ekmeği", "tahil"], ["Kepek ekmeği", "tahil"],
+    ["Beyaz ekmek", "tahil"], ["Yulaf (sütlü)", "tahil"], ["Mısır gevreği (sütlü)", "tahil"],
+    ["Simit", "tahil"],
+    ["Bal", "tatli"], ["Reçel", "tatli"], ["Pekmez", "tatli"], ["Tereyağı", "tatli"],
+    ["Çay (şekersiz)", "icecek"], ["Süt", "icecek"],
+    ["Türk kahvesi (sade)", "icecek"], ["Filtre kahve (sade)", "icecek"],
   ],
   "Öğle": [
-    "Izgara tavuk göğsü", "Izgara köfte", "Izgara balık (levrek/çipura)",
-    "Hindi ızgara", "Mercimek çorbası", "Ezogelin çorbası", "Kuru fasulye",
-    "Nohut yemeği", "Bulgur pilavı", "Sebze yemeği (karışık)",
-    "Mevsim salata (yağsız)", "Çoban salata", "Yoğurt", "Ayran",
-    "Tam buğday ekmeği"
+    ["Izgara tavuk göğsü", "ana"], ["Izgara tavuk but (derisiz)", "ana"],
+    ["Tavuk sote", "ana"], ["Hindi ızgara", "ana"], ["Izgara köfte", "ana"],
+    ["Izgara dana eti", "ana"], ["Izgara balık (levrek/çipura)", "ana"],
+    ["Ton balığı (süzülmüş)", "ana"], ["Kuru fasulye", "ana"],
+    ["Nohut yemeği", "ana"], ["Mercimek yemeği", "ana"],
+    ["Zeytinyağlı fasulye", "ana"], ["Ispanak yemeği", "ana"],
+    ["Sebze yemeği (karışık)", "ana"], ["Kabak yemeği", "ana"],
+    ["Zeytinyağlı enginar", "ana"], ["İmam bayıldı", "ana"],
+    ["Mercimek köftesi", "ana"],
+    ["Mercimek çorbası", "yan"], ["Ezogelin çorbası", "yan"],
+    ["Tarhana çorbası", "yan"], ["Yayla çorbası", "yan"],
+    ["Domates çorbası", "yan"], ["Tavuk suyu çorbası", "yan"],
+    ["Bulgur pilavı", "yan"], ["Pirinç pilavı", "yan"],
+    ["Haşlanmış patates", "yan"], ["Kısır", "yan"],
+    ["Mevsim salata (yağsız)", "salata"], ["Çoban salata", "salata"],
+    ["Yoğurt", "sutyan"], ["Cacık", "sutyan"], ["Ayran", "sutyan"],
   ],
   "Akşam": [
-    "Izgara tavuk göğsü", "Izgara balık (levrek/çipura)", "Hindi ızgara",
-    "Tavuk sote", "Zeytinyağlı fasulye", "Ispanak yemeği", "Kabak yemeği",
-    "Zeytinyağlı enginar", "Haşlanmış brokoli", "Fırın sebze",
-    "Mercimek çorbası", "Mevsim salata (yağsız)", "Çoban salata",
-    "Yoğurt", "Cacık"
+    ["Izgara tavuk göğsü", "ana"], ["Hindi ızgara", "ana"],
+    ["Izgara balık (levrek/çipura)", "ana"], ["Ton balığı (süzülmüş)", "ana"],
+    ["Tavuk sote", "ana"], ["Zeytinyağlı fasulye", "ana"],
+    ["Ispanak yemeği", "ana"], ["Kabak yemeği", "ana"],
+    ["Zeytinyağlı enginar", "ana"], ["Fırın sebze", "ana"],
+    ["Haşlanmış brokoli", "ana"], ["Sebze yemeği (karışık)", "ana"],
+    ["Mercimek yemeği", "ana"], ["Nohut yemeği", "ana"],
+    ["Mercimek çorbası", "yan"], ["Yayla çorbası", "yan"],
+    ["Domates çorbası", "yan"], ["Tarhana çorbası", "yan"],
+    ["Tavuk suyu çorbası", "yan"], ["Bulgur pilavı", "yan"],
+    ["Haşlanmış patates", "yan"],
+    ["Mevsim salata (yağsız)", "salata"], ["Çoban salata", "salata"],
+    ["Yoğurt", "sutyan"], ["Cacık", "sutyan"], ["Ayran", "sutyan"],
   ],
-  "Ara Öğün": [
-    "Elma", "Armut", "Portakal", "Mandalina", "Şeftali", "Çilek",
-    "Badem", "Ceviz", "Yoğurt", "Kefir", "Süt", "Hurma",
-    "Kuru kayısı", "Leblebi"
+  "Ara Öğün 1": [
+    ["Elma", "meyve"], ["Armut", "meyve"], ["Portakal", "meyve"],
+    ["Mandalina", "meyve"], ["Şeftali", "meyve"], ["Muz", "meyve"],
+    ["Karpuz", "meyve"], ["Kavun", "meyve"], ["Çilek", "meyve"],
+    ["Kiraz", "meyve"], ["Üzüm", "meyve"],
   ],
+  "Ara Öğün 2": [
+    ["Badem", "kuru"], ["Ceviz", "kuru"], ["Fındık", "kuru"],
+    ["Antep fıstığı", "kuru"], ["Leblebi", "kuru"],
+    ["Hurma", "kuru"], ["Kuru kayısı", "kuru"], ["Kuru incir", "kuru"],
+  ],
+  "Ara Öğün 3": [
+    ["Yoğurt", "sut"], ["Kefir", "sut"], ["Süt", "sut"],
+    ["Elma", "meyve"], ["Mandalina", "meyve"], ["Şeftali", "meyve"],
+    ["Çilek", "meyve"], ["Badem", "kuru"], ["Leblebi", "kuru"],
+  ],
+};
+
+// Ogun sablonlari: dengeli tabak (ana + yan + salata + sut urunu / kahvalti duzeni)
+const kMealTemplate = {
+  "Sabah": ["protein", "peynir", "yan", "tahil", "icecek", "tatli"],
+  "Öğle": ["ana", "yan", "salata", "sutyan"],
+  "Akşam": ["ana", "yan", "salata", "sutyan"],
+  "Ara Öğün 1": ["meyve"],
+  "Ara Öğün 2": ["kuru"],
+  "Ara Öğün 3": ["sut", "meyve"],
 };
 
 const kActivities = [
@@ -518,8 +574,20 @@ class _HomeState extends State<HomePage> {
     }
     dd.putIfAbsent("done", () => <String, bool>{});
     dd["meals"] ??= {for (var m in kMeals) m: []};
+    // eski kayitlardaki "Ara Öğün" verisini "Ara Öğün 1"e tasi
+    final mealsMap = dd["meals"] as Map;
+    if (mealsMap.containsKey("Ara Öğün")) {
+      final eski = List<dynamic>.from(mealsMap["Ara Öğün"] as List? ?? []);
+      mealsMap.remove("Ara Öğün");
+      if (eski.isNotEmpty) {
+        mealsMap["Ara Öğün 1"] = <dynamic>[
+          ...List<dynamic>.from(mealsMap["Ara Öğün 1"] as List? ?? []),
+          ...eski
+        ];
+      }
+    }
     for (var m in kMeals) {
-      (dd["meals"] as Map).putIfAbsent(m, () => []);
+      mealsMap.putIfAbsent(m, () => []);
     }
     return dd;
   }
@@ -1475,8 +1543,8 @@ class _HomeState extends State<HomePage> {
               const SizedBox(height: 6),
               Text(
                 t != null
-                    ? "Hedefin: ${t["target"]} kk/gün · Dağılım: Sabah %25, Öğle %35, Akşam %30, Ara %10\n"
-                        "🧠 Planlayıcı önceki listeleri hatırlar — aynı yemekleri üst üste tekrar etmez."
+                    ? "Hedefin: ${t["target"]} kk/gün · Dağılım: Sabah %25, Öğle %32, Akşam %27, 3 Ara Öğün %16\n"
+                        "🧠 Akıllı planlayıcı dengeli tabak kurar: aynı öğünde iki ekmek olmaz, çeşit bol olur, önceki listeleri hatırlayıp tekrar etmez."
                     : "Liste için önce Profil sekmesinden bilgilerini gir.",
                 style: const TextStyle(color: kMuted, fontSize: 13, height: 1.4),
               ),
@@ -1511,6 +1579,30 @@ class _HomeState extends State<HomePage> {
                     label: Text(planDays == 1 ? "Bugüne Uygula" : "7 Güne Uygula"),
                   ),
               ]),
+              Builder(builder: (_) {
+                final arsiv = List<dynamic>.from(state["plan_archive"] as List? ?? []);
+                if (arsiv.isEmpty) return const SizedBox.shrink();
+                return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const SizedBox(height: 10),
+                  const Text("🗂 Kayıtlı Listeler (otomatik kaydedilir):",
+                      style: TextStyle(color: kMuted, fontSize: 12.5, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  for (int ai = 0; ai < arsiv.length && ai < 3; ai++)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: InkWell(
+                        onTap: () => setState(() {
+                          currentPlans = _planDonustur(arsiv[ai]["plans"]);
+                          planDays = (arsiv[ai]["gun"] as num).toInt();
+                        }),
+                        child: Text(
+                          "• ${arsiv[ai]["tarih"]} — ${arsiv[ai]["gun"]} günlük (hedef ${arsiv[ai]["hedef"]} kk)  ↩ aç",
+                          style: const TextStyle(color: kAccent, fontSize: 12.5),
+                        ),
+                      ),
+                    ),
+                ]);
+              }),
             ]),
           ),
         ),
@@ -1572,37 +1664,127 @@ class _HomeState extends State<HomePage> {
     final used = <String>{};
     final plans = <Map<String, List<String>>>[];
 
-    List<String> pickMeal(String meal, double budget) {
-      final base = List<String>.from(kPlanPools[meal]!)..shuffle();
-      // öncelik: bu listede ve geçmiş listelerde kullanılmamış olanlar
-      final fresh =
-          base.where((a) => !used.contains(a) && !history.contains(a)).toList();
-      final notUsed = base.where((a) => !used.contains(a)).toList();
-      final pool = fresh.length >= 3
-          ? fresh
-          : (notUsed.length >= 3 ? notUsed : base);
+    // Akilli secici: sablon sirasiyla kategori kategori doldurur.
+    // Kurallar: (1) ogunde ayni kategori 2 kez olmaz (iki ekmek olmaz),
+    // (2) planda ayni yemek tekrar etmez, (3) gecmis listelerden mumkunse farkli,
+    // (4) kalori butcesi %88-%112 arasi dolar.
+    List<String> pickMeal(String meal, double budget, Random rnd) {
+      final template = kMealTemplate[meal]!;
+      final pool = kPlanPools[meal]!;
       final items = <String>[];
+      final usedCat = <String>{};
       int total = 0;
-      for (var ad in pool) {
-        final kcal = foodKcal(ad);
-        if (total + kcal <= budget * 1.05) {
-          items.add(ad);
-          total += kcal;
-          used.add(ad);
+      final isAra = meal.startsWith("Ara");
+
+      for (final cat in template) {
+        if (usedCat.contains(cat)) continue;
+        var adaylar = pool.where((e) => e[1] == cat).toList()..shuffle(rnd);
+        // once taze olanlar (gecmiste ve bu planda kullanilmamis)
+        adaylar.sort((a, b) {
+          final af = (used.contains(a[0]) || history.contains(a[0])) ? 1 : 0;
+          final bf = (used.contains(b[0]) || history.contains(b[0])) ? 1 : 0;
+          return af - bf;
+        });
+        String? sec;
+        for (final ad in adaylar) {
+          final ad0 = ad[0];
+          if (used.contains(ad0)) continue;
+          final kcal = foodKcal(ad0);
+          if (isAra) {
+            // ara ogun: butceye en yakin tek kalem (cok kucukler ikilenebilir)
+            if (sec == null) {
+              sec = ad0;
+            } else if ((kcal - budget).abs() < (foodKcal(sec) - budget).abs() &&
+                !used.contains(ad0)) {
+              sec = ad0;
+            }
+          } else {
+            final kalan = budget - total;
+            if (kcal <= kalan * 1.12) {
+              sec = ad0;
+              break;
+            }
+          }
         }
-        if (total >= budget * 0.85) break;
+        if (sec != null) {
+          items.add(sec);
+          used.add(sec);
+          usedCat.add(cat);
+          total += foodKcal(sec);
+        }
+        if (!isAra && total >= budget * 0.88 && cat != "ana") {
+          // ana yemek secilmeden durma; ana secildiyse butce dolunca sablondan cik
+          if (!template.contains("ana") || usedCat.contains("ana")) break;
+        }
+      }
+
+      // ara ogun cok dusuk kaldiysa kucuk ikinci kalem ekle
+      if (isAra && total < budget * 0.7) {
+        for (final e in List.of(pool)..shuffle(rnd)) {
+          final ad0 = e[0];
+          if (!used.contains(ad0) && !usedCat.contains(e[1]) &&
+              total + foodKcal(ad0) <= budget * 1.25) {
+            items.add(ad0);
+            used.add(ad0);
+            total += foodKcal(ad0);
+            break;
+          }
+        }
+      }
+      // ana ogun hedefin cok altinda kaldiysa kucuk yan ekle
+      if (!isAra && total < budget * 0.8) {
+        for (final cat in template.reversed) {
+          if (usedCat.contains(cat)) continue;
+          for (final e in pool.where((x) => x[1] == cat).toList()..shuffle(rnd)) {
+            final ad0 = e[0];
+            if (!used.contains(ad0) && total + foodKcal(ad0) <= budget * 1.1) {
+              items.add(ad0);
+              used.add(ad0);
+              usedCat.add(cat);
+              total += foodKcal(ad0);
+              break;
+            }
+          }
+          if (total >= budget * 0.8) break;
+        }
       }
       return items;
     }
 
+    final rnd = Random(DateTime.now().millisecondsSinceEpoch);
     for (int day = 0; day < planDays; day++) {
       final plan = <String, List<String>>{};
       for (var meal in kMeals) {
-        plan[meal] = pickMeal(meal, target * kMealFrac[meal]!);
+        plan[meal] = pickMeal(meal, target * kMealFrac[meal]!, rnd);
       }
       plans.add(plan);
     }
-    setState(() => currentPlans = plans);
+    setState(() {
+      currentPlans = plans;
+      // veri tabanina kaydet: olusturulan listeler arsivlenir (son 8)
+      final arsiv = List<dynamic>.from(state["plan_archive"] as List? ?? []);
+      arsiv.insert(0, {
+        "tarih": fmtDate(DateTime.now()),
+        "gun": planDays,
+        "hedef": target,
+        "plans": plans,
+      });
+      state["plan_archive"] = arsiv.length > 8 ? arsiv.sublist(0, 8) : arsiv;
+      _save();
+    });
+  }
+
+  // Arsivden yuklenen planlari gosterim tipine donustur
+  List<Map<String, List<String>>> _planDonustur(dynamic raw) {
+    final out = <Map<String, List<String>>>[];
+    for (final p in (raw as List)) {
+      final gun = <String, List<String>>{};
+      (p as Map).forEach((k, v) {
+        gun["$k"] = [for (final a in (v as List)) "$a"];
+      });
+      out.add(gun);
+    }
+    return out;
   }
 
   void _applyPlans() {
